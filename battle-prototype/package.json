@@ -1,0 +1,16 @@
+{
+  "name": "prmon-go",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PR-mon GO: Gotta Merge 'Em All - Turn PRs into Pokemon battles",
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "build": "npm run build --workspace=client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
