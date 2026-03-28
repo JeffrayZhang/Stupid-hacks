@@ -198,6 +198,17 @@ export default function App() {
   // Choose the AR component
   const ARComponent = ARScreen || ARFallback;
 
+  // AR screen renders fullscreen OUTSIDE the Game Boy shell
+  if (currentScreen === 'ar') {
+    return (
+      <ARComponent
+        prmons={prmons}
+        onSelectPrmon={handleSelectPrmon}
+        onBack={handleBackToTitle}
+      />
+    );
+  }
+
   return (
     <div className="gameboy-shell">
       <div className="screen-bezel">
@@ -209,14 +220,6 @@ export default function App() {
 
             {currentScreen === 'list' && (
               <PRmonList onSelect={handleSelectPrmon} />
-            )}
-
-            {currentScreen === 'ar' && (
-              <ARComponent
-                prmons={prmons}
-                onSelectPrmon={handleSelectPrmon}
-                onBack={handleBackToTitle}
-              />
             )}
 
             {currentScreen === 'battle' && battle && (
