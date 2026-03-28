@@ -100,10 +100,12 @@ function makeTextSprite(text, { fontSize = 32, color = '#fff', backgroundColor =
 export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
+  const radarCanvasRef = useRef(null);
   const { isSupported, isActive, startSession, endSession, sceneRef, hitPoseRef } = useAR();
 
   const [placedCount, setPlacedCount] = useState(0);
   const [error, setError] = useState(null);
+  const [sessionStarted, setSessionStarted] = useState(false);
 
   const placedMapRef = useRef(new Map()); // id → { group, prmon }
   const placedGroupsRef = useRef([]);
@@ -169,22 +171,25 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
 
     const now = performance.now();
 
-    // Force-spawn first PR-mon 1m in front of camera after 1 second
+    // Force-spawn PR-mons spread in a ring around the user, staggered over time
     if (
       !forceSpawnedRef.current &&
-      nextPlaceIdx.current === 0 &&
       prmons.length > 0 &&
       now - (lastPlaceTime.current || now) > 1000
     ) {
-      forceSpawnedRef.current = true;
-      // Place at 0, -0.3, -0.8 (slightly below eye level, less than 1m away)
+      // Spread positions in a ring: ahead, right, behind, left
       const positions = [
-        new THREE.Vector3(0, -0.3, -0.8),
-        new THREE.Vector3(-0.4, -0.3, -1.2),
-        new THREE.Vector3(0.4, -0.3, -1.0),
-        new THREE.Vector3(0, -0.3, -1.5),
+        new THREE.Vector3(0, -0.3, -1.5),      // directly ahead
+        new THREE.Vector3(1.5, -0.3, 0),        // to the right
+        new THREE.Vector3(0, -0.3, 1.5),        // behind
+        new THREE.Vector3(-1.5, -0.3, 0),       // to the left
       ];
-      for (let i = 0; i < Math.min(prmons.length, positions.length); i++) {
+      // Stagger spawns: spawn one every 2 seconds
+      const spawnDelay = 2000;
+      const elapsed = now - (lastPlaceTime.current || now);
+      const maxToSpawn = Math.min(Math.floor(elapsed / spawnDelay) + 1, prmons.length, positions.length);
+
+      for (let i = nextPlaceIdx.current; i < maxToSpawn; i++) {
         const prmon = prmons[i];
         if (!placedMapRef.current.has(prmon.id)) {
           const grp = buildPrmonGroup(prmon);
@@ -193,10 +198,13 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
           placedMapRef.current.set(prmon.id, { group: grp, prmon });
           placedGroupsRef.current.push(grp);
           nextPlaceIdx.current++;
+          setPlacedCount(placedMapRef.current.size);
         }
       }
-      lastPlaceTime.current = now;
-      setPlacedCount(placedMapRef.current.size);
+
+      if (nextPlaceIdx.current >= Math.min(prmons.length, positions.length)) {
+        forceSpawnedRef.current = true;
+      }
     }
 
     // Also place additional ones on detected surfaces
@@ -252,6 +260,109 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       }
       group.position.y = group.userData.baseY + bob;
     }
+
+    // ── Update radar minimap ──
+    const radarCanvas = radarCanvasRef.current;
+    if (radarCanvas && placedMapRef.current.size > 0) {
+      const ctx = radarCanvas.getContext('2d');
+      const size = 120;
+      const cx = size / 2;
+      const cy = size / 2;
+      const scale = 20; // pixels per meter
+
+      ctx.clearRect(0, 0, size, size);
+
+      // Background circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, cx - 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 10, 20, 0.7)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(79, 195, 247, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Radar rings
+      for (let r = 1; r <= 2; r++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(79, 195, 247, 0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      // Cross hairs
+      ctx.strokeStyle = 'rgba(79, 195, 247, 0.1)';
+      ctx.beginPath();
+      ctx.moveTo(cx, 4); ctx.lineTo(cx, size - 4);
+      ctx.moveTo(4, cy); ctx.lineTo(size - 4, cy);
+      ctx.stroke();
+
+      // Get camera heading from the XR frame
+      let cameraY = 0;
+      let camX = 0, camZ = 0;
+      const renderer = sceneRef.current?.parent;
+      // Try to get viewer pose from the frame if available
+      // We'll use the placed groups' positions relative to origin
+      // The camera in Three.js XR is at the origin of the reference space
+      // We approximate: camera is at (0,0,0) in local space
+
+      // Draw PR-mon dots
+      for (const { group, prmon } of placedMapRef.current.values()) {
+        const relX = (group.position.x - camX) * scale;
+        const relZ = (group.position.z - camZ) * scale;
+
+        // Rotate by camera heading (negate for radar)
+        const rx = relX * Math.cos(-cameraY) - relZ * Math.sin(-cameraY);
+        const ry = relX * Math.sin(-cameraY) + relZ * Math.cos(-cameraY);
+
+        const dotX = cx + rx;
+        const dotY = cy + ry;
+
+        // Clamp to radar bounds
+        const dist = Math.sqrt(rx * rx + ry * ry);
+        if (dist > cx - 8) continue; // off radar
+
+        const typeColor = prmon.type?.color || '#4FC3F7';
+        const worldDist = Math.sqrt(
+          Math.pow(group.position.x - camX, 2) +
+          Math.pow(group.position.z - camZ, 2)
+        );
+
+        // Pulse effect when close
+        if (worldDist < 0.5) {
+          const pulseR = 6 + Math.sin(now * 0.008) * 3;
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, pulseR, 0, Math.PI * 2);
+          ctx.fillStyle = typeColor + '44';
+          ctx.fill();
+        }
+
+        // Dot
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = typeColor;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      // User triangle at center
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(cameraY);
+      ctx.beginPath();
+      ctx.moveTo(0, -6);
+      ctx.lineTo(-4, 4);
+      ctx.lineTo(4, 4);
+      ctx.closePath();
+      ctx.fillStyle = '#4FC3F7';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
   }, [prmons, sceneRef, hitPoseRef, buildPrmonGroup]);
 
   // ── Handle tap → find nearest PR-mon ──
@@ -284,35 +395,30 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
     }
   }, [sceneRef, onSelectPrmon, endSession]);
 
-  // ── Start AR session on mount ──
+  // ── Start AR session on user tap (requires user activation) ──
+  const handleStartAR = useCallback(async () => {
+    try {
+      await startSession(canvasRef.current, {
+        overlayEl: overlayRef.current,
+        onFrame,
+        onSelect,
+      });
+      setSessionStarted(true);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [startSession, onFrame, onSelect]);
+
+  // ── Cleanup on unmount ──
   useEffect(() => {
-    if (isSupported === false || isSupported === null) return;
-
-    let cancelled = false;
-
-    const init = async () => {
-      try {
-        await startSession(canvasRef.current, {
-          overlayEl: overlayRef.current,
-          onFrame,
-          onSelect,
-        });
-      } catch (err) {
-        if (!cancelled) setError(err.message);
-      }
-    };
-
-    init();
-
     return () => {
-      cancelled = true;
       placedMapRef.current.clear();
       placedGroupsRef.current = [];
       nextPlaceIdx.current = 0;
       lastPlaceTime.current = 0;
       setPlacedCount(0);
     };
-  }, [isSupported, startSession, onFrame, onSelect]);
+  }, []);
 
   // ── Fallback: WebXR not supported ──
   if (isSupported === false) {
@@ -333,6 +439,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       <div style={styles.fallback}>
         <div style={{ fontSize: '3rem', marginBottom: 16 }}>⚠️</div>
         <p>Failed to start AR: {error}</p>
+        <button style={styles.backBtn} onClick={() => { setError(null); setSessionStarted(false); }}>🔄 Try Again</button>
         <button style={styles.backBtn} onClick={onBack}>← Back</button>
       </div>
     );
@@ -342,6 +449,22 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
     return (
       <div style={styles.fallback}>
         <p>Checking AR support…</p>
+      </div>
+    );
+  }
+
+  // Show start button before session is active
+  if (!sessionStarted) {
+    return (
+      <div ref={overlayRef} style={styles.container}>
+        <canvas ref={canvasRef} style={{ ...styles.canvas, display: 'none' }} />
+        <div style={styles.startOverlay}>
+          <div style={styles.startIcon}>📡</div>
+          <button style={styles.startBtn} onClick={handleStartAR}>
+            TAP TO SCAN FOR PR-MONS
+          </button>
+          <button style={{ ...styles.backBtn, marginTop: 16 }} onClick={onBack}>← Back</button>
+        </div>
       </div>
     );
   }
@@ -361,10 +484,13 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
             : `Found ${placedCount} PR-mon${placedCount > 1 ? 's' : ''}! Tap one to battle!`}
         </div>
 
-        <div style={styles.radarContainer}>
-          <div style={styles.radarDot} />
-          <div style={styles.radarPulse} />
-        </div>
+        {/* Minimap Radar */}
+        <canvas
+          ref={radarCanvasRef}
+          width={120}
+          height={120}
+          style={styles.radarCanvas}
+        />
       </div>
 
       <style>{pulseKeyframes}</style>
@@ -424,27 +550,45 @@ const styles = {
     backdropFilter: 'blur(8px)',
     whiteSpace: 'nowrap',
   },
-  radarContainer: {
+  radarCanvas: {
     position: 'absolute',
-    top: 20, right: 20,
-    width: 24, height: 24,
-  },
-  radarDot: {
-    position: 'absolute',
-    top: '50%', left: '50%',
-    width: 8, height: 8,
-    marginTop: -4, marginLeft: -4,
+    bottom: 80,
+    right: 16,
+    width: 120,
+    height: 120,
     borderRadius: '50%',
-    background: '#4FC3F7',
+    border: '2px solid rgba(79, 195, 247, 0.5)',
+    pointerEvents: 'none',
+    backdropFilter: 'blur(4px)',
+    boxShadow: '0 0 12px rgba(79, 195, 247, 0.3), inset 0 0 20px rgba(0, 10, 20, 0.5)',
   },
-  radarPulse: {
+  startOverlay: {
     position: 'absolute',
-    top: '50%', left: '50%',
-    width: 12, height: 12,
-    marginTop: -6, marginLeft: -6,
-    borderRadius: '50%',
-    border: '2px solid #4FC3F7',
-    animation: 'ar-radar-pulse 1.5s ease-out infinite',
+    top: 0, left: 0, right: 0, bottom: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
+    zIndex: 20,
+  },
+  startIcon: {
+    fontSize: '4rem',
+    marginBottom: 24,
+    animation: 'ar-radar-pulse 2s ease-in-out infinite alternate',
+  },
+  startBtn: {
+    padding: '18px 40px',
+    borderRadius: 16,
+    background: 'linear-gradient(135deg, #4FC3F7, #2196F3)',
+    border: '2px solid rgba(255,255,255,0.3)',
+    color: '#fff',
+    fontSize: '1.3rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    letterSpacing: 1,
+    boxShadow: '0 4px 20px rgba(79, 195, 247, 0.4)',
+    transition: 'transform 0.1s',
   },
   fallback: {
     position: 'fixed',
