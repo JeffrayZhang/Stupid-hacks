@@ -133,8 +133,19 @@ function stopMarkerScene() {
 }
 
 /* ═══════════════════════════════════════════════
-   MARKERLESS MODE  (Three.js + webcam)
+   MARKERLESS MODE  (Three.js + webcam + device orientation)
+   Objects are placed in world-space and the camera
+   rotates to match the physical device, so objects
+   stay anchored in the real world as you move.
    ═══════════════════════════════════════════════ */
+
+// Device-orientation / mouse-drag tracking state
+let orientationAlpha = 0, orientationBeta = 0, orientationGamma = 0;
+let hasDeviceOrientation = false;
+let dragActive = false, dragStartX = 0, dragStartY = 0;
+let cameraYaw = 0, cameraPitch = 0;        // mouse-drag angles (desktop fallback)
+let dragStartYaw = 0, dragStartPitch = 0;
+let orientationPermissionAsked = false;
 
 function startMarkerlessMode() {
   document.getElementById('landing').classList.add('hidden');
@@ -142,6 +153,7 @@ function startMarkerlessMode() {
   markerlessActive = true;
   initThreeScene();
   startWebcam();
+  initOrientationTracking();
 }
 
 function initThreeScene() {
@@ -152,10 +164,9 @@ function initThreeScene() {
 
   scene = new THREE.Scene();
 
-  // Perspective camera (approximate FOV of a webcam)
+  // Perspective camera — positioned at "eye height" looking forward
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 2, 5);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(0, 1.6, 0);    // ~eye height, standing at origin
 
   // Lights
   const ambient = new THREE.AmbientLight(0xffffff, 0.55);
@@ -167,7 +178,7 @@ function initThreeScene() {
   const hemiLight = new THREE.HemisphereLight(0x8888ff, 0x443322, 0.4);
   scene.add(hemiLight);
 
-  // Transparent ground plane for raycasting (invisible)
+  // Invisible ground plane for raycasting
   const planeGeo = new THREE.PlaneGeometry(200, 200);
   const planeMat = new THREE.MeshBasicMaterial({ visible: false });
   groundPlane = new THREE.Mesh(planeGeo, planeMat);
@@ -175,21 +186,116 @@ function initThreeScene() {
   groundPlane.position.y = 0;
   scene.add(groundPlane);
 
-  // Visual grid to suggest a floor
-  const gridHelper = new THREE.GridHelper(20, 40, 0x444466, 0x222233);
-  gridHelper.material.opacity = 0.25;
-  gridHelper.material.transparent = true;
-  scene.add(gridHelper);
-
   raycaster = new THREE.Raycaster();
   mouse = new THREE.Vector2();
 
-  // Click to place
+  // Click / tap to place
   canvas.addEventListener('click', onCanvasClick);
+
+  // Desktop fallback: mouse-drag to rotate camera
+  canvas.addEventListener('mousedown', onDragStart);
+  canvas.addEventListener('mousemove', onDragMove);
+  canvas.addEventListener('mouseup', onDragEnd);
+  canvas.addEventListener('mouseleave', onDragEnd);
+  // Touch drag (on devices without gyroscope)
+  canvas.addEventListener('touchstart', onTouchDragStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchDragMove, { passive: false });
+  canvas.addEventListener('touchend', onDragEnd);
+
   window.addEventListener('resize', onResize);
 
   animateMarkerless();
 }
+
+/* ── Device Orientation (gyroscope) ── */
+
+function initOrientationTracking() {
+  // iOS 13+ requires explicit permission
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // We'll request on first tap (browser requires user gesture)
+    if (!orientationPermissionAsked) {
+      orientationPermissionAsked = true;
+      document.getElementById('markerless-canvas').addEventListener('click', requestOrientationPermission, { once: true });
+    }
+  } else {
+    // Android / desktop — just listen
+    window.addEventListener('deviceorientation', onDeviceOrientation);
+  }
+}
+
+function requestOrientationPermission() {
+  DeviceOrientationEvent.requestPermission()
+    .then(state => {
+      if (state === 'granted') {
+        window.addEventListener('deviceorientation', onDeviceOrientation);
+      }
+    })
+    .catch(console.warn);
+}
+
+function onDeviceOrientation(e) {
+  if (e.alpha === null) return;       // no data
+  hasDeviceOrientation = true;
+  orientationAlpha = e.alpha;         // compass heading 0-360
+  orientationBeta  = e.beta;          // front-back tilt -180..180
+  orientationGamma = e.gamma;         // left-right tilt -90..90
+}
+
+/* ── Desktop mouse-drag fallback ── */
+
+function onDragStart(e) {
+  // Only start drag on right-click or when holding shift (left-click is for placing)
+  // Actually: let's use right-mouse-button OR two-finger drag for camera
+  if (e.button === 2 || e.shiftKey) {
+    dragActive = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    dragStartYaw = cameraYaw;
+    dragStartPitch = cameraPitch;
+    e.preventDefault();
+  }
+}
+
+function onDragMove(e) {
+  if (!dragActive) return;
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+  cameraYaw   = dragStartYaw   - dx * 0.003;
+  cameraPitch  = dragStartPitch - dy * 0.003;
+  cameraPitch  = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraPitch));
+}
+
+function onDragEnd() {
+  dragActive = false;
+}
+
+function onTouchDragStart(e) {
+  if (e.touches.length === 2) {       // two-finger for camera rotation
+    dragActive = true;
+    const mid = midpoint(e.touches);
+    dragStartX = mid.x; dragStartY = mid.y;
+    dragStartYaw = cameraYaw;
+    dragStartPitch = cameraPitch;
+    e.preventDefault();
+  }
+}
+function onTouchDragMove(e) {
+  if (!dragActive || e.touches.length < 2) return;
+  const mid = midpoint(e.touches);
+  const dx = mid.x - dragStartX;
+  const dy = mid.y - dragStartY;
+  cameraYaw   = dragStartYaw   - dx * 0.004;
+  cameraPitch  = dragStartPitch - dy * 0.004;
+  cameraPitch  = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraPitch));
+  e.preventDefault();
+}
+function midpoint(touches) {
+  return { x: (touches[0].clientX + touches[1].clientX) / 2,
+           y: (touches[0].clientY + touches[1].clientY) / 2 };
+}
+
+/* ── Webcam ── */
 
 function startWebcam() {
   videoElement = document.getElementById('webcam-video');
@@ -197,6 +303,12 @@ function startWebcam() {
     .then(stream => {
       videoStream = stream;
       videoElement.srcObject = stream;
+      // Match camera FOV to approximate webcam FOV
+      const settings = stream.getVideoTracks()[0].getSettings();
+      if (settings && settings.width && settings.height) {
+        camera.aspect = settings.width / settings.height;
+        camera.updateProjectionMatrix();
+      }
     })
     .catch(err => {
       console.warn('Camera access denied, trying any camera...', err);
@@ -206,8 +318,10 @@ function startWebcam() {
     });
 }
 
+/* ── Click-to-place ── */
+
 function onCanvasClick(e) {
-  if (!markerlessActive) return;
+  if (!markerlessActive || dragActive) return;
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -248,9 +362,49 @@ function placeObject(x, y, z) {
   placedObjects.push(mesh);
 }
 
+/* ── Camera orientation update (called each frame) ── */
+
+function updateCameraOrientation() {
+  if (hasDeviceOrientation) {
+    // Convert device orientation (degrees) → camera quaternion
+    // Device orientation: alpha=compass, beta=front/back tilt, gamma=left/right tilt
+    const alpha = THREE.MathUtils.degToRad(orientationAlpha);  // Z-axis (compass)
+    const beta  = THREE.MathUtils.degToRad(orientationBeta);   // X-axis (tilt forward)
+    const gamma = THREE.MathUtils.degToRad(orientationGamma);  // Y-axis (tilt side)
+
+    // Build rotation from device orientation using ZXY Euler order
+    // This is the standard mapping for device orientation → 3D camera
+    const euler = new THREE.Euler();
+    const q = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -PI/2 around X (screen → world)
+
+    euler.set(beta, alpha, -gamma, 'YXZ');
+    q.setFromEuler(euler);
+    q.multiply(q1);                    // adjust for screen orientation
+
+    // Account for screen orientation (portrait vs landscape)
+    const screenOrientation = window.orientation || 0;
+    const qScreen = new THREE.Quaternion();
+    qScreen.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -THREE.MathUtils.degToRad(screenOrientation));
+    q.multiply(qScreen);
+
+    camera.quaternion.copy(q);
+  } else {
+    // Desktop fallback: apply yaw/pitch from mouse drag
+    // Default view: slightly pitched down to see the ground plane
+    const euler = new THREE.Euler(cameraPitch - 0.4, cameraYaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(euler);
+  }
+}
+
+/* ── Animation loop ── */
+
 function animateMarkerless() {
   if (!markerlessActive) return;
   requestAnimationFrame(animateMarkerless);
+
+  // Update camera to match device/mouse orientation
+  updateCameraOrientation();
 
   const now = performance.now();
   placedObjects.forEach(obj => {
@@ -288,6 +442,9 @@ function stopMarkerless() {
   markerlessActive = false;
   if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
   if (renderer) { renderer.dispose(); renderer = null; }
+  window.removeEventListener('deviceorientation', onDeviceOrientation);
+  hasDeviceOrientation = false;
+  cameraYaw = 0; cameraPitch = 0;
   placedObjects = [];
   scene = null;
 }
@@ -297,4 +454,9 @@ function stopMarkerless() {
    ═══════════════════════════════════════════════ */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') backToLanding();
+});
+
+// Prevent context menu on the canvas so right-drag works for camera rotation
+document.addEventListener('contextmenu', e => {
+  if (e.target && e.target.id === 'markerless-canvas') e.preventDefault();
 });

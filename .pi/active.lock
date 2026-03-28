@@ -1,0 +1,10 @@
+{
+  "agentId": "currently-prototype-ar",
+  "sessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks-agent-worktree-0002--/2026-03-28T16-45-13-338Z_4d920773-a3b3-4ba1-b9b1-be9ed130032e.jsonl",
+  "parentSessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks--/2026-03-28T16-31-28-255Z_c2ea193b-a079-4972-80bf-b4c4aa8905aa.jsonl",
+  "pid": 85042,
+  "branch": "side-agent/currently-prototype-ar",
+  "startedAt": "2026-03-28T16:45:11.846Z",
+  "tmuxWindowId": "@85",
+  "tmuxWindowIndex": 3
+}
