@@ -242,8 +242,13 @@ async function startXRSession() {
     const glLayer = new XRWebGLLayer(xrSession, gl);
     xrSession.updateRenderState({ baseLayer: glLayer });
 
-    // Reference spaces
-    xrRefSpace = await xrSession.requestReferenceSpace('local-floor');
+    // Reference spaces — try local-floor first, fall back to local
+    try {
+      xrRefSpace = await xrSession.requestReferenceSpace('local-floor');
+    } catch (_) {
+      console.warn('local-floor not supported, falling back to local');
+      xrRefSpace = await xrSession.requestReferenceSpace('local');
+    }
     xrViewerSpace = await xrSession.requestReferenceSpace('viewer');
 
     // Hit-test source (ray from center of screen into the world)
