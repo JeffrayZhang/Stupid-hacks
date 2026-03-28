@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebAR Prototype</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Landing / mode selection screen -->
+  <div id="landing">
+    <div class="landing-card">
+      <h1>🔮 WebAR Prototype</h1>
+      <p class="subtitle">Place 3D objects in the real world using your webcam</p>
+      <div class="mode-buttons">
+        <button id="btn-marker" class="mode-btn marker">
+          <span class="icon">📷</span>
+          <span class="label">Marker Mode</span>
+          <span class="desc">Point camera at a Hiro marker to anchor objects</span>
+        </button>
+        <button id="btn-markerless" class="mode-btn markerless">
+          <span class="icon">✋</span>
+          <span class="label">Markerless Mode</span>
+          <span class="desc">Click anywhere on the camera feed to place objects</span>
+        </button>
+      </div>
+      <p class="hint">Both modes use your webcam. Allow camera access when prompted.</p>
+    </div>
+  </div>
+
+  <!-- Marker-based AR (A-Frame + AR.js) -->
+  <div id="marker-mode" class="hidden">
+    <div id="marker-ui" class="toolbar">
+      <button class="back-btn" onclick="backToLanding()">← Back</button>
+      <span class="toolbar-title">Marker AR</span>
+      <div class="object-picker">
+        <button class="obj-btn active" data-shape="cube" title="Cube">🟦</button>
+        <button class="obj-btn" data-shape="sphere" title="Sphere">🔴</button>
+        <button class="obj-btn" data-shape="cylinder" title="Cylinder">🟢</button>
+        <button class="obj-btn" data-shape="torus" title="Torus">🟡</button>
+        <button class="obj-btn" data-shape="cone" title="Cone">🟣</button>
+      </div>
+      <div class="color-picker">
+        <button class="color-btn active" data-color="#4FC3F7" style="background:#4FC3F7"></button>
+        <button class="color-btn" data-color="#EF5350" style="background:#EF5350"></button>
+        <button class="color-btn" data-color="#66BB6A" style="background:#66BB6A"></button>
+        <button class="color-btn" data-color="#FFA726" style="background:#FFA726"></button>
+        <button class="color-btn" data-color="#AB47BC" style="background:#AB47BC"></button>
+        <button class="color-btn" data-color="#FFFFFF" style="background:#FFFFFF; border:1px solid #666"></button>
+      </div>
+    </div>
+    <div id="marker-scene-container"></div>
+    <div id="marker-info" class="info-bar">
+      Point your camera at a <a href="hiro-marker.png" target="_blank">Hiro marker</a> to see 3D objects appear.
+    </div>
+  </div>
+
+  <!-- Markerless AR (Three.js + getUserMedia) -->
+  <div id="markerless-mode" class="hidden">
+    <div id="markerless-ui" class="toolbar">
+      <button class="back-btn" onclick="backToLanding()">← Back</button>
+      <span class="toolbar-title">Markerless AR</span>
+      <div class="object-picker">
+        <button class="obj-btn active" data-shape="cube" title="Cube">🟦</button>
+        <button class="obj-btn" data-shape="sphere" title="Sphere">🔴</button>
+        <button class="obj-btn" data-shape="cylinder" title="Cylinder">🟢</button>
+        <button class="obj-btn" data-shape="torus" title="Torus">🟡</button>
+        <button class="obj-btn" data-shape="cone" title="Cone">🟣</button>
+      </div>
+      <div class="color-picker">
+        <button class="color-btn active" data-color="#4FC3F7" style="background:#4FC3F7"></button>
+        <button class="color-btn" data-color="#EF5350" style="background:#EF5350"></button>
+        <button class="color-btn" data-color="#66BB6A" style="background:#66BB6A"></button>
+        <button class="color-btn" data-color="#FFA726" style="background:#FFA726"></button>
+        <button class="color-btn" data-color="#AB47BC" style="background:#AB47BC"></button>
+        <button class="color-btn" data-color="#FFFFFF" style="background:#FFFFFF; border:1px solid #666"></button>
+      </div>
+      <button class="clear-btn" onclick="clearObjects()">🗑 Clear All</button>
+    </div>
+    <canvas id="markerless-canvas"></canvas>
+    <video id="webcam-video" autoplay playsinline></video>
+    <div id="markerless-info" class="info-bar">
+      Click anywhere on the camera feed to place a 3D object. Objects anchor to the virtual ground plane.
+    </div>
+  </div>
+
+  <!-- Scripts: A-Frame + AR.js loaded dynamically only for marker mode -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

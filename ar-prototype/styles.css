@@ -1,0 +1,93 @@
+/* ── Reset & Base ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #eee; overflow: hidden; height: 100vh; width: 100vw; }
+.hidden { display: none !important; }
+
+/* ── Landing Screen ── */
+#landing {
+  display: flex; align-items: center; justify-content: center;
+  height: 100vh; width: 100vw;
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+}
+.landing-card {
+  text-align: center; max-width: 520px; padding: 48px 36px;
+  background: rgba(255,255,255,0.06); border-radius: 24px;
+  backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.landing-card h1 { font-size: 2.4rem; margin-bottom: 8px; }
+.landing-card .subtitle { color: #aaa; font-size: 1.05rem; margin-bottom: 32px; }
+.mode-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.mode-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 24px 28px; border-radius: 16px; border: 2px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05); color: #fff; cursor: pointer;
+  transition: all 0.2s; min-width: 200px;
+}
+.mode-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); transform: translateY(-2px); }
+.mode-btn .icon { font-size: 2rem; }
+.mode-btn .label { font-size: 1.1rem; font-weight: 600; }
+.mode-btn .desc { font-size: 0.78rem; color: #999; max-width: 160px; }
+.hint { margin-top: 28px; font-size: 0.82rem; color: #666; }
+
+/* ── Toolbar (shared) ── */
+.toolbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: rgba(10,10,10,0.85); backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  flex-wrap: wrap;
+}
+.toolbar-title { font-weight: 700; font-size: 1rem; margin-right: auto; }
+.back-btn {
+  background: rgba(255,255,255,0.1); border: none; color: #fff;
+  padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;
+}
+.back-btn:hover { background: rgba(255,255,255,0.2); }
+.object-picker, .color-picker { display: flex; gap: 4px; }
+.obj-btn {
+  font-size: 1.3rem; background: rgba(255,255,255,0.08); border: 2px solid transparent;
+  border-radius: 8px; padding: 4px 8px; cursor: pointer; transition: all 0.15s;
+}
+.obj-btn.active { border-color: #4FC3F7; background: rgba(79,195,247,0.15); }
+.obj-btn:hover { background: rgba(255,255,255,0.15); }
+.color-btn {
+  width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; transition: all 0.15s;
+}
+.color-btn.active { border-color: #fff; transform: scale(1.2); }
+.color-btn:hover { transform: scale(1.15); }
+.clear-btn {
+  background: rgba(239,83,80,0.2); border: 1px solid rgba(239,83,80,0.4);
+  color: #EF5350; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 0.85rem;
+}
+.clear-btn:hover { background: rgba(239,83,80,0.35); }
+
+/* ── Info Bar ── */
+.info-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+  text-align: center; padding: 10px 16px; font-size: 0.85rem; color: #ccc;
+  background: rgba(10,10,10,0.8); backdrop-filter: blur(8px);
+}
+.info-bar a { color: #4FC3F7; }
+
+/* ── Markerless Canvas / Video ── */
+#markerless-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+#webcam-video { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 0; }
+
+/* ── Marker mode: A-Frame scene fills screen ── */
+#marker-scene-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; }
+#marker-scene-container a-scene { width: 100% !important; height: 100% !important; }
+
+/* ── Crosshair for markerless ── */
+#markerless-mode .crosshair {
+  position: fixed; top: 50%; left: 50%; z-index: 500;
+  width: 40px; height: 40px; margin: -20px 0 0 -20px;
+  border: 2px solid rgba(255,255,255,0.6); border-radius: 50%;
+  pointer-events: none;
+}
+#markerless-mode .crosshair::before, #markerless-mode .crosshair::after {
+  content: ''; position: absolute; background: rgba(255,255,255,0.6);
+}
+#markerless-mode .crosshair::before { width: 1px; height: 12px; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+#markerless-mode .crosshair::after { width: 12px; height: 1px; top: 50%; left: 50%; transform: translate(-50%,-50%); }
