@@ -366,8 +366,8 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
         const relZ = (group.position.z - camZ) * scale;
 
         // Rotate by camera heading (negate for radar)
-        const rx = relX * Math.cos(-cameraY) - relZ * Math.sin(-cameraY);
-        const ry = relX * Math.sin(-cameraY) + relZ * Math.cos(-cameraY);
+        const rx = relX * Math.cos(cameraY) - relZ * Math.sin(cameraY);
+        const ry = relX * Math.sin(cameraY) + relZ * Math.cos(cameraY);
 
         const dotX = cx + rx;
         const dotY = cy + ry;
@@ -404,7 +404,6 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       // User triangle at center
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.rotate(cameraY);
       ctx.beginPath();
       ctx.moveTo(0, -6);
       ctx.lineTo(-4, 4);
