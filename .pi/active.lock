@@ -1,10 +1,10 @@
 {
-  "agentId": "currently-prototype-ar",
-  "sessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks-agent-worktree-0002--/2026-03-28T16-45-13-338Z_4d920773-a3b3-4ba1-b9b1-be9ed130032e.jsonl",
-  "parentSessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks--/2026-03-28T16-31-28-255Z_c2ea193b-a079-4972-80bf-b4c4aa8905aa.jsonl",
-  "pid": 85042,
-  "branch": "side-agent/currently-prototype-ar",
-  "startedAt": "2026-03-28T16:45:11.846Z",
-  "tmuxWindowId": "@85",
-  "tmuxWindowIndex": 3
+  "agentId": "battle-rewire",
+  "sessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks-agent-worktree-0007--/2026-03-28T17-56-07-236Z_2ddd7ab9-48ac-4be6-8ef6-70b7a7abc0ce.jsonl",
+  "parentSessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks--/2026-03-28T17-30-44-011Z_ac676a31-38fc-46c8-9049-5c76a8296cc1.jsonl",
+  "pid": 43133,
+  "branch": "side-agent/battle-rewire",
+  "startedAt": "2026-03-28T17:56:05.738Z",
+  "tmuxWindowId": "@91",
+  "tmuxWindowIndex": 5
 }

@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
 import { getTypeClass } from '../utils/prmonStats';
+import { fetchPRmons as apiFetchPRmons } from '../api/client';
 
 export default function PRmonList({ onSelect }) {
   const [prmons, setPrmons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  async function fetchPRmons() {
+  async function loadPRmons() {
     try {
-      const res = await fetch('/api/prmons');
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
+      const data = await apiFetchPRmons();
       setPrmons(data);
       setError(null);
     } catch (err) {
@@ -21,8 +20,8 @@ export default function PRmonList({ onSelect }) {
   }
 
   useEffect(() => {
-    fetchPRmons();
-    const interval = setInterval(fetchPRmons, 15000);
+    loadPRmons();
+    const interval = setInterval(loadPRmons, 15000);
     return () => clearInterval(interval);
   }, []);
 

@@ -1,6 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
-
-const API = '/api';
+import {
+  startBattle as apiStartBattle,
+  attack as apiAttack,
+  catchPrmon as apiCatchPrmon,
+  runAway as apiRunAway,
+} from '../api/client';
 
 export default function useBattle() {
   const [battle, setBattle] = useState(null);
@@ -17,9 +21,8 @@ export default function useBattle() {
     setTurnMessages([]);
     setLastHit(null);
     try {
-      const res = await fetch(`${API}/battle/${prmonId}/start`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiStartBattle(prmonId);
+      if (data.error) throw new Error(data.error);
       setBattle(data);
       setTurnMessages(data.log || []);
       prevBattleRef.current = data;
@@ -36,13 +39,8 @@ export default function useBattle() {
     setError(null);
 
     try {
-      const res = await fetch(`${API}/battle/${battle.id}/attack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ move: moveId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiAttack(battle.id, moveId);
+      if (data.error) throw new Error(data.error);
 
       // Figure out new messages since last state
       const prevLogLen = prevBattleRef.current?.log?.length || 0;
@@ -78,9 +76,8 @@ export default function useBattle() {
     if (!battle) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API}/battle/${battle.id}/catch`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await apiCatchPrmon(battle.id);
+      if (data.error) throw new Error(data.error);
       setBattle(data);
       setTurnMessages(prev => [...prev, ...data.log.slice(prevBattleRef.current?.log?.length || 0)]);
       prevBattleRef.current = data;
@@ -94,8 +91,7 @@ export default function useBattle() {
   const runAway = useCallback(async () => {
     if (!battle) return;
     try {
-      const res = await fetch(`${API}/battle/${battle.id}/run`, { method: 'POST' });
-      const data = await res.json();
+      const data = await apiRunAway(battle.id);
       setBattle(data);
     } catch {
       // Just clear battle on error
