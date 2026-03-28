@@ -1,8 +1,12 @@
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { fetchPRs, approvePR, mergePR, postComment, postNitpick, fetchDiffChunk } = require('./github');
-const { prToStats } = require('./prmon');
+const { prToStats, TYPES } = require('./prmon');
 const { MOVES, executePlayerMove, executeEnemyMove } = require('./battle');
+const { createSession, getSession, deleteSession, addCaughtPrmon, setActiveBattle } = require('./session');
+const { createEncounter, getEncounter, linkBattle } = require('./encounter');
+const events = require('./events');
 
 const app = express();
 app.use(cors());
@@ -20,7 +24,6 @@ function parseRepo() {
   const rawOwner = process.env.GITHUB_OWNER || '';
   const rawRepo = process.env.GITHUB_REPO || '';
 
-  // If GITHUB_REPO is a full URL, parse owner/repo from it
   const urlMatch = rawRepo.match(/github\.com\/([^/]+)\/([^/.]+)/);
   if (urlMatch) {
     return { owner: urlMatch[1], repo: urlMatch[2] };
@@ -34,27 +37,67 @@ function parseRepo() {
 
 const { owner: REPO_OWNER, repo: REPO_NAME } = parseRepo();
 
-// Refresh PR-mons from GitHub
+// Refresh PR-mons from GitHub (delta-based to avoid false Socket.IO events)
 async function refreshPRmons() {
   try {
     const prs = await fetchPRs(REPO_OWNER, REPO_NAME);
-    prmons.clear();
+    const oldIds = new Set(prmons.keys());
+    const newIds = new Set();
+
     for (const pr of prs) {
       const stats = prToStats(pr);
+      newIds.add(stats.id);
+
+      if (!prmons.has(stats.id)) {
+        events.emit('prmon:appeared', { prmon: stats });
+      } else {
+        const old = prmons.get(stats.id);
+        if (old.hp !== stats.hp || old.level !== stats.level) {
+          events.emit('prmon:updated', { prmon: stats });
+        }
+      }
       prmons.set(stats.id, stats);
     }
+
+    // Detect disappeared PR-mons
+    for (const oldId of oldIds) {
+      if (!newIds.has(oldId)) {
+        prmons.delete(oldId);
+        events.emit('prmon:disappeared', { prmonId: oldId });
+      }
+    }
+
     console.log(`\u{1f47e} Loaded ${prmons.size} wild PR-mons from ${REPO_OWNER}/${REPO_NAME}`);
   } catch (err) {
     console.error('Failed to fetch PRs:', err.message);
   }
 }
 
-// GET /api/prmons - List all wild PR-mons
+// ─── Session endpoints ───
+
+app.post('/api/session', (req, res) => {
+  const session = createSession();
+  res.json(session);
+});
+
+app.get('/api/session/:sessionId', (req, res) => {
+  const session = getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  res.json(session);
+});
+
+app.delete('/api/session/:sessionId', (req, res) => {
+  const deleted = deleteSession(req.params.sessionId);
+  if (!deleted) return res.status(404).json({ error: 'Session not found' });
+  res.json({ ok: true });
+});
+
+// ─── PR-mon discovery ───
+
 app.get('/api/prmons', (req, res) => {
   res.json([...prmons.values()]);
 });
 
-// GET /api/prmons/:id - Get a single PR-mon
 app.get('/api/prmons/:id', (req, res) => {
   const id = parseInt(req.params.id);
   const prmon = prmons.get(id);
@@ -62,15 +105,60 @@ app.get('/api/prmons/:id', (req, res) => {
   res.json(prmon);
 });
 
-// POST /api/battle/:id/start - Start a battle
+app.post('/api/prmons/refresh', async (req, res) => {
+  await refreshPRmons();
+  res.json([...prmons.values()]);
+});
+
+// ─── AR encounter ───
+
+app.post('/api/encounter', (req, res) => {
+  const { sessionId, prmonId, arPosition } = req.body;
+
+  if (sessionId) {
+    const session = getSession(sessionId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+  }
+
+  const prmon = prmons.get(prmonId);
+  if (!prmon) return res.status(404).json({ error: 'PR-mon not found' });
+
+  const encounter = createEncounter(sessionId, prmonId, arPosition);
+
+  res.json({
+    encounterId: encounter.encounterId,
+    prmon,
+    canBattle: true,
+    message: `A wild ${prmon.name} appeared!`,
+  });
+});
+
+app.get('/api/encounter/:encounterId', (req, res) => {
+  const encounter = getEncounter(req.params.encounterId);
+  if (!encounter) return res.status(404).json({ error: 'Encounter not found' });
+
+  const prmon = prmons.get(encounter.prmonId);
+  res.json({
+    ...encounter,
+    prmon: prmon || null,
+    canBattle: !!prmon && !encounter.battleId,
+  });
+});
+
+// ─── Battle system ───
+
 app.post('/api/battle/:id/start', (req, res) => {
   const id = parseInt(req.params.id);
   const prmon = prmons.get(id);
   if (!prmon) return res.status(404).json({ error: 'PR-mon not found' });
 
   const battleId = `battle-${id}-${Date.now()}`;
+  const { sessionId, encounterId } = req.body || {};
+
   const battle = {
     id: battleId,
+    sessionId: sessionId || null,
+    encounterId: encounterId || null,
     prmon: { ...prmon },
     playerHp: 200,
     playerMaxHp: 200,
@@ -82,10 +170,21 @@ app.post('/api/battle/:id/start', (req, res) => {
     status: 'active',
   };
   battles.set(battleId, battle);
+
+  if (sessionId) setActiveBattle(sessionId, battleId);
+  if (encounterId) linkBattle(encounterId, battleId);
+
+  events.emit('battle:started', { battleId, prmonId: id });
+
   res.json(battle);
 });
 
-// POST /api/battle/:battleId/attack - Execute a move
+app.get('/api/battle/:battleId', (req, res) => {
+  const battle = battles.get(req.params.battleId);
+  if (!battle) return res.status(404).json({ error: 'Battle not found' });
+  res.json(battle);
+});
+
 app.post('/api/battle/:battleId/attack', async (req, res) => {
   const battle = battles.get(req.params.battleId);
   if (!battle) return res.status(404).json({ error: 'Battle not found' });
@@ -147,6 +246,8 @@ app.post('/api/battle/:battleId/attack', async (req, res) => {
     turnLog.push(`${battle.prmon.name} fainted!`);
     turnLog.push(`PR #${battle.prmon.prNumber} is ready to be caught!`);
     battle.log.push(...turnLog);
+    events.emit('battle:turnResult', { battleId: battle.id, turnLog, prmonHp: battle.prmon.hp, playerHp: battle.playerHp });
+    events.emit('battle:ended', { battleId: battle.id, result: 'won' });
     return res.json(battle);
   }
 
@@ -188,6 +289,9 @@ app.post('/api/battle/:battleId/attack', async (req, res) => {
     turnLog.push('You blacked out! The PR-mon was too powerful...');
     battle.log.push(...turnLog);
 
+    events.emit('battle:turnResult', { battleId: battle.id, turnLog, prmonHp: battle.prmon.hp, playerHp: battle.playerHp });
+    events.emit('battle:ended', { battleId: battle.id, result: 'lost' });
+
     // Post defeat comment
     if (process.env.GITHUB_TOKEN) {
       const [owner, repo] = (battle.prmon.repo || `${REPO_OWNER}/${REPO_NAME}`).split('/');
@@ -203,6 +307,7 @@ app.post('/api/battle/:battleId/attack', async (req, res) => {
 
   battle.turn++;
   battle.log.push(...turnLog);
+  events.emit('battle:turnResult', { battleId: battle.id, turnLog, prmonHp: battle.prmon.hp, playerHp: battle.playerHp });
   res.json(battle);
 });
 
@@ -224,6 +329,14 @@ app.post('/api/battle/:battleId/catch', async (req, res) => {
     battle.log.push(`\u{1f389} Gotcha! ${battle.prmon.name} was caught!`);
     battle.log.push(`PR #${prNumber} has been merged!`);
     prmons.delete(battle.prmon.id);
+
+    if (battle.sessionId) {
+      addCaughtPrmon(battle.sessionId, { ...battle.prmon });
+    }
+
+    events.emit('battle:ended', { battleId: battle.id, result: 'caught' });
+    events.emit('prmon:disappeared', { prmonId: battle.prmon.id });
+
     res.json(battle);
   } catch (err) {
     res.status(500).json({ error: `Merge failed: ${err.message}` });
@@ -238,6 +351,8 @@ app.post('/api/battle/:battleId/run', async (req, res) => {
   battle.status = 'fled';
   battle.log.push('Got away safely!');
 
+  events.emit('battle:ended', { battleId: battle.id, result: 'fled' });
+
   if (process.env.GITHUB_TOKEN) {
     const [owner, repo] = (battle.prmon.repo || `${REPO_OWNER}/${REPO_NAME}`).split('/');
     postComment(owner, repo, battle.prmon.prNumber,
@@ -248,15 +363,26 @@ app.post('/api/battle/:battleId/run', async (req, res) => {
   res.json(battle);
 });
 
-// Webhook handler for new PRs
+// ─── Webhook ───
+
 app.post('/api/webhook', (req, res) => {
   const { action, pull_request } = req.body;
 
-  if (action === 'opened' || action === 'synchronize' || action === 'reopened') {
+  if (action === 'opened' || action === 'reopened') {
     if (pull_request) {
       const stats = prToStats(pull_request);
       prmons.set(stats.id, stats);
       console.log(`\u{1f195} Wild ${stats.name} appeared! (PR #${stats.prNumber})`);
+      events.emit('prmon:appeared', { prmon: stats });
+    }
+  }
+
+  if (action === 'synchronize') {
+    if (pull_request) {
+      const stats = prToStats(pull_request);
+      prmons.set(stats.id, stats);
+      console.log(`\u{1f504} PR-mon ${stats.name} updated! (PR #${stats.prNumber})`);
+      events.emit('prmon:updated', { prmon: stats });
     }
   }
 
@@ -264,25 +390,34 @@ app.post('/api/webhook', (req, res) => {
     if (pull_request) {
       prmons.delete(pull_request.number);
       console.log(`\u{1f44b} PR #${pull_request.number} is gone!`);
+      events.emit('prmon:disappeared', { prmonId: pull_request.number });
     }
   }
 
   res.json({ ok: true });
 });
 
-// GET /api/moves - List available moves
+// ─── Game data ───
+
 app.get('/api/moves', (req, res) => {
   res.json(MOVES);
 });
 
-// Refresh on startup
-refreshPRmons();
+app.get('/api/types', (req, res) => {
+  res.json(TYPES);
+});
 
-// Refresh every 2 minutes
+// ─── Start server ───
+
+refreshPRmons();
 setInterval(refreshPRmons, 2 * 60 * 1000);
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+events.init(server);
+
+server.listen(PORT, () => {
   console.log(`\n\u{1f47e} PR-mon GO server running on port ${PORT}`);
   console.log(`\u{1f4e1} Watching ${REPO_OWNER}/${REPO_NAME} for wild PR-mons`);
+  console.log(`\u{1f50c} Socket.IO ready for real-time events`);
   console.log(`\u26a1 ${process.env.GITHUB_TOKEN ? 'GitHub token configured' : 'No GitHub token - running in demo mode'}\n`);
 });
