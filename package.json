@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && node --watch index.js",
+    "dev:server:env": "cd server && node --watch --env-file=../.env index.js",
     "dev:client": "cd battle-prototype/client && npx vite --port 3000 --host",
     "dev:mock": "cd battle-prototype/client && npx vite --port 3000 --host",
     "start": "cd battle-prototype/client && npx vite --port 3000 --host",

@@ -8,8 +8,15 @@
 import { MOCK_PRMONS } from './mockData.js';
 import { MOVES, createMockBattle, processMockAttack } from './mockBattle.js';
 
-const USE_MOCK = !import.meta.env.VITE_API_URL;
-const BASE = import.meta.env.VITE_API_URL || '';
+/**
+ * Mode detection:
+ * - VITE_API_URL set         → always use real API at that URL
+ * - VITE_API_URL not set     → try proxy (/api) first, fall back to mock if server unreachable
+ */
+const EXPLICIT_API = import.meta.env.VITE_API_URL;
+const BASE = EXPLICIT_API || '';
+
+let _mockMode = !!EXPLICIT_API ? false : null; // null = unknown, will probe
 
 // ── Module-level state for mock mode ──────────────────────────────────────
 
@@ -27,6 +34,34 @@ function mockDelay() {
 /** Deep-clone an object so callers can't mutate internal state. */
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
+}
+
+/**
+ * Probe the real API once (when no explicit URL is set).
+ * Returns true if the server is reachable via the Vite proxy.
+ */
+async function probeApi() {
+  if (_mockMode !== null) return !_mockMode;
+  try {
+    const res = await fetch(`${BASE}/api/types`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      _mockMode = false;
+      console.log('[PR-mon] Real API detected via proxy — using live data');
+      return true;
+    }
+  } catch {
+    // server not running
+  }
+  _mockMode = true;
+  console.log('[PR-mon] No API server detected — using mock data');
+  return false;
+}
+
+/** Check if we should use mock mode (probes once if needed). */
+async function shouldMock() {
+  if (_mockMode !== null) return _mockMode;
+  await probeApi();
+  return _mockMode;
 }
 
 async function apiFetch(path, options = {}) {
@@ -48,7 +83,7 @@ async function apiFetch(path, options = {}) {
  * @returns {Promise<Array>}
  */
 export async function fetchPRmons() {
-  if (USE_MOCK) {
+  if (await shouldMock()) {
     await mockDelay();
     return clone(MOCK_PRMONS);
   }
@@ -61,7 +96,7 @@ export async function fetchPRmons() {
  * @returns {Promise<object>} BattleState
  */
 export async function startBattle(prmonId) {
-  if (USE_MOCK) {
+  if (await shouldMock()) {
     await mockDelay();
     const prmon = MOCK_PRMONS.find((p) => p.id === prmonId);
     if (!prmon) throw new Error('PR-mon not found');
@@ -79,7 +114,7 @@ export async function startBattle(prmonId) {
  * @returns {Promise<object>} Updated BattleState
  */
 export async function attack(battleId, moveId) {
-  if (USE_MOCK) {
+  if (await shouldMock()) {
     await mockDelay();
     const battle = activeBattles.get(battleId);
     if (!battle) throw new Error('Battle not found');
@@ -98,7 +133,7 @@ export async function attack(battleId, moveId) {
  * @returns {Promise<object>} Updated BattleState
  */
 export async function catchPrmon(battleId) {
-  if (USE_MOCK) {
+  if (await shouldMock()) {
     await mockDelay();
     const battle = activeBattles.get(battleId);
     if (!battle) throw new Error('Battle not found');
@@ -117,7 +152,7 @@ export async function catchPrmon(battleId) {
  * @returns {Promise<object>} Updated BattleState
  */
 export async function runAway(battleId) {
-  if (USE_MOCK) {
+  if (await shouldMock()) {
     await mockDelay();
     const battle = activeBattles.get(battleId);
     if (!battle) throw new Error('Battle not found');
@@ -133,7 +168,7 @@ export async function runAway(battleId) {
  * @returns {Promise<object>} Map of moveId → move definition
  */
 export async function fetchMoves() {
-  if (USE_MOCK) {
+  if (await shouldMock()) {
     await mockDelay();
     return clone(MOVES);
   }

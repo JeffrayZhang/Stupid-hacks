@@ -9,6 +9,10 @@ export default defineConfig({
     allowedHosts: ['syringeal-paris-flawed.ngrok-free.dev'],
     proxy: {
       '/api': 'http://localhost:3001',
+      '/socket.io': {
+        target: 'http://localhost:3001',
+        ws: true,
+      },
     },
   },
 })
