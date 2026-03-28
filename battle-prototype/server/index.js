@@ -15,9 +15,24 @@ const prmons = new Map();
 // Active battle sessions
 const battles = new Map();
 
-// Configure repo from env
-const REPO_OWNER = process.env.GITHUB_OWNER || 'octocat';
-const REPO_NAME = process.env.GITHUB_REPO || 'Hello-World';
+// Configure repo from env - handle full URLs like https://github.com/owner/repo.git
+function parseRepo() {
+  const rawOwner = process.env.GITHUB_OWNER || '';
+  const rawRepo = process.env.GITHUB_REPO || '';
+
+  // If GITHUB_REPO is a full URL, parse owner/repo from it
+  const urlMatch = rawRepo.match(/github\.com\/([^/]+)\/([^/.]+)/);
+  if (urlMatch) {
+    return { owner: urlMatch[1], repo: urlMatch[2] };
+  }
+
+  return {
+    owner: rawOwner || 'JeffrayZhang',
+    repo: rawRepo || 'Stupid-hacks',
+  };
+}
+
+const { owner: REPO_OWNER, repo: REPO_NAME } = parseRepo();
 
 // Refresh PR-mons from GitHub
 async function refreshPRmons() {

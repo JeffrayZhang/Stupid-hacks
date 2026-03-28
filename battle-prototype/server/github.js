@@ -1,11 +1,21 @@
 const { Octokit } = require('@octokit/rest');
+const { execSync } = require('child_process');
 
 let octokit = null;
+
+function getToken() {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  try {
+    return execSync('gh auth token', { encoding: 'utf8' }).trim();
+  } catch {
+    return undefined;
+  }
+}
 
 function getOctokit() {
   if (!octokit) {
     octokit = new Octokit({
-      auth: process.env.GITHUB_TOKEN,
+      auth: getToken(),
     });
   }
   return octokit;
