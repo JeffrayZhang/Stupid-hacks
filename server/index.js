@@ -324,7 +324,8 @@ app.post('/api/battle/:battleId/catch', async (req, res) => {
 
   try {
     if (process.env.GITHUB_TOKEN) {
-      await approvePR(owner, repo, prNumber);
+      // Skip approval — can't approve your own PRs
+      try { await approvePR(owner, repo, prNumber); } catch (e) { console.log('Skipping approval:', e.message); }
       await mergePR(owner, repo, prNumber);
     }
     battle.status = 'caught';
