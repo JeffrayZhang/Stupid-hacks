@@ -1,17 +1,13 @@
 /* ──────────────────────────────────────────────
    WebAR Prototype — app.js
    Marker mode  : A-Frame + AR.js (Hiro marker)
-   Markerless   : Three.js + getUserMedia
+   Markerless   : WebXR immersive-ar + hit-test
+                  (real world surface detection)
    ────────────────────────────────────────────── */
 
 // ── State ──
 let currentShape = 'cube';
 let currentColor = '#4FC3F7';
-let markerlessActive = false;
-
-// Three.js refs (markerless)
-let scene, camera, renderer, groundPlane, raycaster, mouse, placedObjects = [];
-let videoElement, videoStream;
 
 // ── UI wiring ──
 document.addEventListener('DOMContentLoaded', () => {
@@ -24,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.closest('.object-picker').querySelectorAll('.obj-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentShape = btn.dataset.shape;
-      updateMarkerEntity();            // live-update the marker scene entity
+      updateMarkerEntity();
     });
   });
   document.querySelectorAll('.color-btn').forEach(btn => {
@@ -38,8 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function backToLanding() {
-  stopMarkerless();
   stopMarkerScene();
+  stopWebXR();
   document.getElementById('landing').classList.remove('hidden');
   document.getElementById('marker-mode').classList.add('hidden');
   document.getElementById('markerless-mode').classList.add('hidden');
@@ -50,7 +46,6 @@ function backToLanding() {
    ═══════════════════════════════════════════════ */
 
 let aframeLoaded = false;
-let markerScene = null;
 
 function loadAFrame() {
   return new Promise((resolve) => {
@@ -70,14 +65,13 @@ function loadAFrame() {
 async function startMarkerMode() {
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('marker-mode').classList.remove('hidden');
-
   await loadAFrame();
   buildMarkerScene();
 }
 
 function buildMarkerScene() {
   const container = document.getElementById('marker-scene-container');
-  if (container.querySelector('a-scene')) return;       // already built
+  if (container.querySelector('a-scene')) return;
 
   container.innerHTML = `
     <a-scene
@@ -92,7 +86,6 @@ function buildMarkerScene() {
       <a-entity camera></a-entity>
     </a-scene>`;
 
-  // Wait for scene to initialise, then set object
   setTimeout(updateMarkerEntity, 500);
 }
 
@@ -100,7 +93,6 @@ function updateMarkerEntity() {
   const el = document.getElementById('ar-object');
   if (!el) return;
 
-  // Remove existing geometry children
   while (el.firstChild) el.removeChild(el.firstChild);
 
   const geomMap = {
@@ -115,16 +107,13 @@ function updateMarkerEntity() {
   el.setAttribute('material', `color: ${currentColor}; metalness: 0.3; roughness: 0.5;`);
   el.setAttribute('position', '0 0.35 0');
   el.setAttribute('rotation', '0 0 0');
-
-  // Add spin animation
   el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear;');
 }
 
 function stopMarkerScene() {
   const container = document.getElementById('marker-scene-container');
-  const sc = container.querySelector('a-scene');
+  const sc = container && container.querySelector('a-scene');
   if (sc) {
-    // AR.js creates video elements; try to stop their streams
     document.querySelectorAll('video').forEach(v => {
       if (v.srcObject) { v.srcObject.getTracks().forEach(t => t.stop()); v.srcObject = null; }
     });
@@ -133,320 +122,251 @@ function stopMarkerScene() {
 }
 
 /* ═══════════════════════════════════════════════
-   MARKERLESS MODE  (Three.js + webcam + device orientation)
-   Objects are placed in world-space and the camera
-   rotates to match the physical device, so objects
-   stay anchored in the real world as you move.
+   MARKERLESS MODE  — WebXR immersive-ar
+   Uses real device camera + SLAM tracking.
+   Objects are placed on real-world surfaces via
+   WebXR hit-testing.
    ═══════════════════════════════════════════════ */
 
-// Device-orientation / mouse-drag tracking state
-let orientationAlpha = 0, orientationBeta = 0, orientationGamma = 0;
-let hasDeviceOrientation = false;
-let dragActive = false, dragStartX = 0, dragStartY = 0;
-let cameraYaw = 0, cameraPitch = 0;        // mouse-drag angles (desktop fallback)
-let dragStartYaw = 0, dragStartPitch = 0;
-let orientationPermissionAsked = false;
+let xrSession = null;
+let xrRefSpace = null;
+let xrViewerSpace = null;
+let xrHitTestSource = null;
+let gl = null;
+let xrScene, xrCamera, xrRenderer;
+let xrReticle = null;              // targeting reticle on detected surface
+let xrPlacedObjects = [];
+let xrHitPose = null;              // latest hit-test pose (matrix)
 
-function startMarkerlessMode() {
+async function startMarkerlessMode() {
+  // Check WebXR support first
+  if (!navigator.xr) {
+    showARFallbackMessage('Your browser does not support WebXR. Use Chrome on Android for markerless AR.');
+    return;
+  }
+
+  const supported = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+  if (!supported) {
+    showARFallbackMessage(
+      'WebXR immersive-ar is not available on this device.<br>' +
+      '<b>Markerless AR requires:</b> Chrome on Android (with ARCore), or a WebXR-capable headset.<br>' +
+      'On this device, try <b>Marker Mode</b> instead — it works everywhere!'
+    );
+    return;
+  }
+
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('markerless-mode').classList.remove('hidden');
-  markerlessActive = true;
-  initThreeScene();
-  startWebcam();
-  initOrientationTracking();
+
+  initWebXRScene();
+  await startXRSession();
 }
 
-function initThreeScene() {
+function showARFallbackMessage(html) {
+  document.getElementById('landing').classList.add('hidden');
+  document.getElementById('markerless-mode').classList.remove('hidden');
+
   const canvas = document.getElementById('markerless-canvas');
-  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
+  canvas.style.display = 'none';
+  const video = document.getElementById('webcam-video');
+  if (video) video.style.display = 'none';
 
-  scene = new THREE.Scene();
+  let msg = document.getElementById('ar-fallback-msg');
+  if (!msg) {
+    msg = document.createElement('div');
+    msg.id = 'ar-fallback-msg';
+    msg.style.cssText = `
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      color: #eee; text-align: center; padding: 32px; font-size: 1.1rem; line-height: 1.7;
+    `;
+    document.getElementById('markerless-mode').appendChild(msg);
+  }
+  msg.innerHTML = `
+    <div style="font-size: 3rem; margin-bottom: 16px;">📱</div>
+    <div style="max-width: 480px;">${html}</div>
+    <button onclick="backToLanding()" style="
+      margin-top: 24px; padding: 12px 28px; border-radius: 12px;
+      background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+      color: #fff; font-size: 1rem; cursor: pointer;
+    ">← Back to menu</button>
+  `;
+}
 
-  // Perspective camera — positioned at "eye height" looking forward
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 1.6, 0);    // ~eye height, standing at origin
+function initWebXRScene() {
+  const canvas = document.getElementById('markerless-canvas');
 
-  // Lights
-  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-  scene.add(ambient);
+  xrRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  xrRenderer.setPixelRatio(window.devicePixelRatio);
+  xrRenderer.setSize(window.innerWidth, window.innerHeight);
+  xrRenderer.xr.enabled = true;
+
+  gl = xrRenderer.getContext();
+
+  xrScene = new THREE.Scene();
+
+  xrCamera = new THREE.PerspectiveCamera();
+  xrCamera.matrixAutoUpdate = false;   // WebXR provides the camera matrix
+
+  // Lighting
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  xrScene.add(ambient);
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-  dirLight.position.set(3, 6, 4);
-  dirLight.castShadow = true;
-  scene.add(dirLight);
+  dirLight.position.set(2, 5, 3);
+  xrScene.add(dirLight);
   const hemiLight = new THREE.HemisphereLight(0x8888ff, 0x443322, 0.4);
-  scene.add(hemiLight);
+  xrScene.add(hemiLight);
 
-  // Invisible ground plane for raycasting
-  const planeGeo = new THREE.PlaneGeometry(200, 200);
-  const planeMat = new THREE.MeshBasicMaterial({ visible: false });
-  groundPlane = new THREE.Mesh(planeGeo, planeMat);
-  groundPlane.rotation.x = -Math.PI / 2;
-  groundPlane.position.y = 0;
-  scene.add(groundPlane);
-
-  raycaster = new THREE.Raycaster();
-  mouse = new THREE.Vector2();
-
-  // Click / tap to place
-  canvas.addEventListener('click', onCanvasClick);
-
-  // Desktop fallback: mouse-drag to rotate camera
-  canvas.addEventListener('mousedown', onDragStart);
-  canvas.addEventListener('mousemove', onDragMove);
-  canvas.addEventListener('mouseup', onDragEnd);
-  canvas.addEventListener('mouseleave', onDragEnd);
-  // Touch drag (on devices without gyroscope)
-  canvas.addEventListener('touchstart', onTouchDragStart, { passive: false });
-  canvas.addEventListener('touchmove', onTouchDragMove, { passive: false });
-  canvas.addEventListener('touchend', onDragEnd);
-
-  window.addEventListener('resize', onResize);
-
-  animateMarkerless();
+  // Reticle — shows where object will be placed (ring on detected surface)
+  const reticleGeo = new THREE.RingGeometry(0.08, 0.11, 32).rotateX(-Math.PI / 2);
+  const reticleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  xrReticle = new THREE.Mesh(reticleGeo, reticleMat);
+  xrReticle.visible = false;
+  xrReticle.matrixAutoUpdate = false;
+  xrScene.add(xrReticle);
 }
 
-/* ── Device Orientation (gyroscope) ── */
-
-function initOrientationTracking() {
-  // iOS 13+ requires explicit permission
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // We'll request on first tap (browser requires user gesture)
-    if (!orientationPermissionAsked) {
-      orientationPermissionAsked = true;
-      document.getElementById('markerless-canvas').addEventListener('click', requestOrientationPermission, { once: true });
-    }
-  } else {
-    // Android / desktop — just listen
-    window.addEventListener('deviceorientation', onDeviceOrientation);
-  }
-}
-
-function requestOrientationPermission() {
-  DeviceOrientationEvent.requestPermission()
-    .then(state => {
-      if (state === 'granted') {
-        window.addEventListener('deviceorientation', onDeviceOrientation);
-      }
-    })
-    .catch(console.warn);
-}
-
-function onDeviceOrientation(e) {
-  if (e.alpha === null) return;       // no data
-  hasDeviceOrientation = true;
-  orientationAlpha = e.alpha;         // compass heading 0-360
-  orientationBeta  = e.beta;          // front-back tilt -180..180
-  orientationGamma = e.gamma;         // left-right tilt -90..90
-}
-
-/* ── Desktop mouse-drag fallback ── */
-
-function onDragStart(e) {
-  // Only start drag on right-click or when holding shift (left-click is for placing)
-  // Actually: let's use right-mouse-button OR two-finger drag for camera
-  if (e.button === 2 || e.shiftKey) {
-    dragActive = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    dragStartYaw = cameraYaw;
-    dragStartPitch = cameraPitch;
-    e.preventDefault();
-  }
-}
-
-function onDragMove(e) {
-  if (!dragActive) return;
-  const dx = e.clientX - dragStartX;
-  const dy = e.clientY - dragStartY;
-  cameraYaw   = dragStartYaw   - dx * 0.003;
-  cameraPitch  = dragStartPitch - dy * 0.003;
-  cameraPitch  = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraPitch));
-}
-
-function onDragEnd() {
-  dragActive = false;
-}
-
-function onTouchDragStart(e) {
-  if (e.touches.length === 2) {       // two-finger for camera rotation
-    dragActive = true;
-    const mid = midpoint(e.touches);
-    dragStartX = mid.x; dragStartY = mid.y;
-    dragStartYaw = cameraYaw;
-    dragStartPitch = cameraPitch;
-    e.preventDefault();
-  }
-}
-function onTouchDragMove(e) {
-  if (!dragActive || e.touches.length < 2) return;
-  const mid = midpoint(e.touches);
-  const dx = mid.x - dragStartX;
-  const dy = mid.y - dragStartY;
-  cameraYaw   = dragStartYaw   - dx * 0.004;
-  cameraPitch  = dragStartPitch - dy * 0.004;
-  cameraPitch  = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraPitch));
-  e.preventDefault();
-}
-function midpoint(touches) {
-  return { x: (touches[0].clientX + touches[1].clientX) / 2,
-           y: (touches[0].clientY + touches[1].clientY) / 2 };
-}
-
-/* ── Webcam ── */
-
-function startWebcam() {
-  videoElement = document.getElementById('webcam-video');
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } })
-    .then(stream => {
-      videoStream = stream;
-      videoElement.srcObject = stream;
-      // Match camera FOV to approximate webcam FOV
-      const settings = stream.getVideoTracks()[0].getSettings();
-      if (settings && settings.width && settings.height) {
-        camera.aspect = settings.width / settings.height;
-        camera.updateProjectionMatrix();
-      }
-    })
-    .catch(err => {
-      console.warn('Camera access denied, trying any camera...', err);
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => { videoStream = stream; videoElement.srcObject = stream; })
-        .catch(e => alert('Could not access camera: ' + e.message));
+async function startXRSession() {
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay', 'light-estimation'],
+      domOverlay: { root: document.getElementById('markerless-mode') }
     });
-}
 
-/* ── Click-to-place ── */
+    xrSession.addEventListener('end', onXRSessionEnd);
 
-function onCanvasClick(e) {
-  if (!markerlessActive || dragActive) return;
-  const rect = renderer.domElement.getBoundingClientRect();
-  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    // Set up WebGL layer
+    await gl.makeXRCompatible();
+    const glLayer = new XRWebGLLayer(xrSession, gl);
+    xrSession.updateRenderState({ baseLayer: glLayer });
 
-  raycaster.setFromCamera(mouse, camera);
-  const hits = raycaster.intersectObject(groundPlane);
-  if (hits.length > 0) {
-    const pt = hits[0].point;
-    placeObject(pt.x, pt.y, pt.z);
+    // Reference spaces
+    xrRefSpace = await xrSession.requestReferenceSpace('local-floor');
+    xrViewerSpace = await xrSession.requestReferenceSpace('viewer');
+
+    // Hit-test source (ray from center of screen into the world)
+    xrHitTestSource = await xrSession.requestHitTestSource({ space: xrViewerSpace });
+
+    // Tap to place
+    xrSession.addEventListener('select', onXRSelect);
+
+    // Start render loop
+    xrRenderer.setAnimationLoop((time, frame) => onXRFrame(time, frame));
+
+    // Update info
+    document.getElementById('markerless-info').innerHTML =
+      'Point at a surface — a white ring shows where objects will land. <b>Tap to place!</b>';
+  } catch (err) {
+    console.error('WebXR session failed:', err);
+    showARFallbackMessage('Failed to start AR session: ' + err.message);
   }
 }
 
-function placeObject(x, y, z) {
+function onXRFrame(time, frame) {
+  if (!xrSession || !frame) return;
+
+  const pose = frame.getViewerPose(xrRefSpace);
+  if (!pose) return;
+
+  // Hit-test: find where the center-screen ray hits a real-world surface
+  if (xrHitTestSource) {
+    const hitResults = frame.getHitTestResults(xrHitTestSource);
+    if (hitResults.length > 0) {
+      const hit = hitResults[0];
+      xrHitPose = hit.getPose(xrRefSpace);
+      xrReticle.visible = true;
+      xrReticle.matrix.fromArray(xrHitPose.transform.matrix);
+    } else {
+      xrReticle.visible = false;
+      xrHitPose = null;
+    }
+  }
+
+  // Animate placed objects
+  const now = performance.now();
+  xrPlacedObjects.forEach(obj => {
+    const age = now - obj.userData.spawnTime;
+    if (age < 300) {
+      const t = age / 300;
+      obj.scale.setScalar(1 - Math.pow(1 - t, 3));
+    } else {
+      obj.scale.setScalar(1);
+    }
+    obj.rotation.y += 0.005;
+  });
+
+  // Render — Three.js WebXR handles camera projection automatically
+  xrRenderer.render(xrScene, xrCamera);
+}
+
+function onXRSelect() {
+  // Place object at the current hit-test location
+  if (!xrHitPose) return;
+
+  const pos = xrHitPose.transform.position;
+  placeWebXRObject(pos.x, pos.y, pos.z);
+}
+
+function placeWebXRObject(x, y, z) {
   let geo;
+  const s = 0.08;  // objects are ~8cm — real-world scale
   switch (currentShape) {
-    case 'sphere':   geo = new THREE.SphereGeometry(0.25, 32, 32); break;
-    case 'cylinder': geo = new THREE.CylinderGeometry(0.2, 0.2, 0.5, 32); break;
-    case 'torus':    geo = new THREE.TorusGeometry(0.25, 0.07, 16, 48); break;
-    case 'cone':     geo = new THREE.ConeGeometry(0.25, 0.5, 32); break;
-    default:         geo = new THREE.BoxGeometry(0.4, 0.4, 0.4); break;
+    case 'sphere':   geo = new THREE.SphereGeometry(s, 32, 32); break;
+    case 'cylinder': geo = new THREE.CylinderGeometry(s * 0.7, s * 0.7, s * 2, 32); break;
+    case 'torus':    geo = new THREE.TorusGeometry(s, s * 0.25, 16, 48); break;
+    case 'cone':     geo = new THREE.ConeGeometry(s, s * 2, 32); break;
+    default:         geo = new THREE.BoxGeometry(s * 1.5, s * 1.5, s * 1.5); break;
   }
 
-  const mat = new THREE.MeshStandardMaterial({ color: currentColor, metalness: 0.35, roughness: 0.45 });
+  const mat = new THREE.MeshStandardMaterial({
+    color: currentColor,
+    metalness: 0.35,
+    roughness: 0.45,
+  });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true;
 
-  // Offset y so objects sit on the ground
+  // Position on the real surface — offset up by half height
   const bbox = new THREE.Box3().setFromObject(mesh);
   const halfH = (bbox.max.y - bbox.min.y) / 2;
   mesh.position.set(x, y + halfH, z);
 
-  // Entrance animation data
   mesh.userData.spawnTime = performance.now();
-  mesh.userData.baseY = mesh.position.y;
   mesh.scale.set(0, 0, 0);
 
-  scene.add(mesh);
-  placedObjects.push(mesh);
+  xrScene.add(mesh);
+  xrPlacedObjects.push(mesh);
 }
 
-/* ── Camera orientation update (called each frame) ── */
-
-function updateCameraOrientation() {
-  if (hasDeviceOrientation) {
-    // Convert device orientation (degrees) → camera quaternion
-    // Device orientation: alpha=compass, beta=front/back tilt, gamma=left/right tilt
-    const alpha = THREE.MathUtils.degToRad(orientationAlpha);  // Z-axis (compass)
-    const beta  = THREE.MathUtils.degToRad(orientationBeta);   // X-axis (tilt forward)
-    const gamma = THREE.MathUtils.degToRad(orientationGamma);  // Y-axis (tilt side)
-
-    // Build rotation from device orientation using ZXY Euler order
-    // This is the standard mapping for device orientation → 3D camera
-    const euler = new THREE.Euler();
-    const q = new THREE.Quaternion();
-    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -PI/2 around X (screen → world)
-
-    euler.set(beta, alpha, -gamma, 'YXZ');
-    q.setFromEuler(euler);
-    q.multiply(q1);                    // adjust for screen orientation
-
-    // Account for screen orientation (portrait vs landscape)
-    const screenOrientation = window.orientation || 0;
-    const qScreen = new THREE.Quaternion();
-    qScreen.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -THREE.MathUtils.degToRad(screenOrientation));
-    q.multiply(qScreen);
-
-    camera.quaternion.copy(q);
-  } else {
-    // Desktop fallback: apply yaw/pitch from mouse drag
-    // Default view: slightly pitched down to see the ground plane
-    const euler = new THREE.Euler(cameraPitch - 0.4, cameraYaw, 0, 'YXZ');
-    camera.quaternion.setFromEuler(euler);
-  }
-}
-
-/* ── Animation loop ── */
-
-function animateMarkerless() {
-  if (!markerlessActive) return;
-  requestAnimationFrame(animateMarkerless);
-
-  // Update camera to match device/mouse orientation
-  updateCameraOrientation();
-
-  const now = performance.now();
-  placedObjects.forEach(obj => {
-    // Pop-in animation (300ms)
-    const age = now - obj.userData.spawnTime;
-    if (age < 300) {
-      const t = age / 300;
-      const ease = 1 - Math.pow(1 - t, 3);   // ease-out cubic
-      obj.scale.setScalar(ease);
-    } else {
-      obj.scale.setScalar(1);
-    }
-    // Gentle hover
-    obj.position.y = obj.userData.baseY + Math.sin(now * 0.002 + obj.id) * 0.03;
-    // Slow spin
-    obj.rotation.y += 0.005;
-  });
-
-  renderer.render(scene, camera);
-}
-
-function onResize() {
-  if (!renderer) return;
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+function onXRSessionEnd() {
+  xrSession = null;
+  xrHitTestSource = null;
+  xrHitPose = null;
+  xrPlacedObjects = [];
+  if (xrRenderer) xrRenderer.setAnimationLoop(null);
 }
 
 function clearObjects() {
-  placedObjects.forEach(obj => scene.remove(obj));
-  placedObjects = [];
+  xrPlacedObjects.forEach(obj => xrScene && xrScene.remove(obj));
+  xrPlacedObjects = [];
 }
 
-function stopMarkerless() {
-  markerlessActive = false;
-  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
-  if (renderer) { renderer.dispose(); renderer = null; }
-  window.removeEventListener('deviceorientation', onDeviceOrientation);
-  hasDeviceOrientation = false;
-  cameraYaw = 0; cameraPitch = 0;
-  placedObjects = [];
-  scene = null;
+function stopWebXR() {
+  if (xrSession) {
+    xrSession.end().catch(() => {});
+  }
+  onXRSessionEnd();
+  if (xrRenderer) { xrRenderer.dispose(); xrRenderer = null; }
+  xrScene = null;
+
+  // Clean up fallback message if present
+  const msg = document.getElementById('ar-fallback-msg');
+  if (msg) msg.remove();
+  const canvas = document.getElementById('markerless-canvas');
+  if (canvas) canvas.style.display = '';
+  const video = document.getElementById('webcam-video');
+  if (video) video.style.display = '';
 }
 
 /* ═══════════════════════════════════════════════
@@ -454,9 +374,4 @@ function stopMarkerless() {
    ═══════════════════════════════════════════════ */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') backToLanding();
-});
-
-// Prevent context menu on the canvas so right-drag works for camera rotation
-document.addEventListener('contextmenu', e => {
-  if (e.target && e.target.id === 'markerless-canvas') e.preventDefault();
 });

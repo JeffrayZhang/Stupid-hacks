@@ -21,7 +21,7 @@
         <button id="btn-markerless" class="mode-btn markerless">
           <span class="icon">✋</span>
           <span class="label">Markerless Mode</span>
-          <span class="desc">Click anywhere on the camera feed to place objects</span>
+          <span class="desc">Place objects on real surfaces using WebXR (Android Chrome)</span>
         </button>
       </div>
       <p class="hint">Both modes use your webcam. Allow camera access when prompted.</p>
@@ -78,10 +78,9 @@
       <button class="clear-btn" onclick="clearObjects()">🗑 Clear All</button>
     </div>
     <canvas id="markerless-canvas"></canvas>
-    <video id="webcam-video" autoplay playsinline></video>
+    <video id="webcam-video" autoplay playsinline style="display:none"></video>
     <div id="markerless-info" class="info-bar">
-      Tap/click to place objects. Move your device to look around — objects stay anchored in the real world.
-      <span class="desktop-hint">Desktop: Shift+drag or right-drag to rotate camera.</span>
+      Starting AR session… Point your device at a flat surface.
     </div>
   </div>
 
