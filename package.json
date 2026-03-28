@@ -1,0 +1,15 @@
+{
+  "name": "prmon-go",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PR-mon GO: Gotta Merge 'Em All",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && node --watch index.js",
+    "dev:client": "cd battle-prototype/client && npx vite --port 3000",
+    "install:all": "cd server && npm install && cd ../battle-prototype && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
