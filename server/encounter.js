@@ -4,11 +4,22 @@ const encounters = new Map();
 
 function createEncounter(sessionId, prmonId, arPosition) {
   const encounterId = `enc-${crypto.randomUUID()}`;
+  // Generate a spread-out default position if none provided
+  const defaultPosition = (() => {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 2.5 + Math.random() * 4.5; // 2.5m–7m from origin
+    return {
+      x: Math.sin(angle) * radius,
+      y: -0.3,
+      z: -Math.cos(angle) * radius,
+    };
+  })();
+
   const encounter = {
     encounterId,
     sessionId: sessionId || null,
     prmonId,
-    arPosition: arPosition || { x: 0, y: 0, z: 0 },
+    arPosition: arPosition || defaultPosition,
     createdAt: Date.now(),
     battleId: null,
   };

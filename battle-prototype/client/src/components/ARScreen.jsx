@@ -10,8 +10,8 @@ import useAR from '../hooks/useAR';
  * Tapping a creature selects it for battle.
  */
 
-const MIN_SPACING = 0.2;
-const PLACE_INTERVAL = 800;
+const MIN_SPACING = 1.0;
+const PLACE_INTERVAL = 1200;
 
 // ── Build a 3D PR logo from Three.js primitives ──
 // Ported from Arya's ar-prototype/app.js buildPRLogoMesh
@@ -97,6 +97,49 @@ function makeTextSprite(text, { fontSize = 32, color = '#fff', backgroundColor =
   return new THREE.Sprite(mat);
 }
 
+// ── Generate well-spaced positions in concentric rings ──
+// Ensures PR-mons are far apart and distributed around the user
+function generateSpreadPositions(count) {
+  const positions = [];
+  // Ring 1: 2.5m away, up to 4 positions (N, E, S, W)
+  // Ring 2: 4.5m away, up to 6 positions (offset by 30°)
+  // Ring 3: 7m away, up to 8 positions (offset by 22.5°)
+  const rings = [
+    { radius: 2.5, slots: 4, offsetAngle: 0 },
+    { radius: 4.5, slots: 6, offsetAngle: Math.PI / 6 },
+    { radius: 7.0, slots: 8, offsetAngle: Math.PI / 8 },
+  ];
+  const groundY = -0.3;
+
+  for (const ring of rings) {
+    for (let i = 0; i < ring.slots; i++) {
+      const angle = ring.offsetAngle + (i / ring.slots) * Math.PI * 2;
+      // Add slight random jitter (±0.3m) so they don't look perfectly geometric
+      const jitterX = (Math.random() - 0.5) * 0.6;
+      const jitterZ = (Math.random() - 0.5) * 0.6;
+      positions.push(new THREE.Vector3(
+        Math.sin(angle) * ring.radius + jitterX,
+        groundY,
+        -Math.cos(angle) * ring.radius + jitterZ
+      ));
+      if (positions.length >= count) return positions;
+    }
+  }
+
+  // If we still need more, add extras at larger distances
+  while (positions.length < count) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 5 + Math.random() * 5;
+    positions.push(new THREE.Vector3(
+      Math.sin(angle) * radius,
+      groundY,
+      -Math.cos(angle) * radius
+    ));
+  }
+
+  return positions;
+}
+
 export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
@@ -177,13 +220,9 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       prmons.length > 0 &&
       now - (lastPlaceTime.current || now) > 1000
     ) {
-      // Spread positions in a ring: ahead, right, behind, left
-      const positions = [
-        new THREE.Vector3(0, -0.3, -1.5),      // directly ahead
-        new THREE.Vector3(1.5, -0.3, 0),        // to the right
-        new THREE.Vector3(0, -0.3, 1.5),        // behind
-        new THREE.Vector3(-1.5, -0.3, 0),       // to the left
-      ];
+      // Generate well-spaced positions in concentric rings around the user
+      // so PR-mons don't cluster together
+      const positions = generateSpreadPositions(prmons.length);
       // Stagger spawns: spawn one every 2 seconds
       const spawnDelay = 2000;
       const elapsed = now - (lastPlaceTime.current || now);
@@ -268,7 +307,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       const size = 120;
       const cx = size / 2;
       const cy = size / 2;
-      const scale = 20; // pixels per meter
+      const scale = 7; // pixels per meter (wide view for spread-out PR-mons)
 
       ctx.clearRect(0, 0, size, size);
 
@@ -281,8 +320,8 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Radar rings
-      for (let r = 1; r <= 2; r++) {
+      // Radar rings at 2.5m, 5m, 7.5m
+      for (const r of [2.5, 5, 7.5]) {
         ctx.beginPath();
         ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(79, 195, 247, 0.15)';
@@ -388,7 +427,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
         }
       }
 
-      if (nearest && nearestDist < 0.8) {
+      if (nearest && nearestDist < 1.5) {
         endSession();
         onSelectPrmon(nearest);
       }
