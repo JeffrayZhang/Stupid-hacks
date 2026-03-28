@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && node --watch index.js",
-    "dev:client": "cd battle-prototype/client && npx vite --port 3000",
-    "install:all": "cd server && npm install && cd ../battle-prototype && npm install"
+    "dev:client": "cd battle-prototype/client && npx vite --port 3000 --host",
+    "dev:mock": "cd battle-prototype/client && npx vite --port 3000 --host",
+    "start": "cd battle-prototype/client && npx vite --port 3000 --host",
+    "install:all": "npm install && cd server && npm install && cd ../battle-prototype/client && npm install",
+    "postinstall": "cd battle-prototype/client && npm install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
