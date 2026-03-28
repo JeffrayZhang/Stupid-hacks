@@ -1,10 +1,10 @@
 {
-  "agentId": "prs-still-generate",
-  "sessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks-agent-worktree-0014--/2026-03-28T19-25-03-480Z_144b97b1-9dbb-435e-bdd4-c344e6c8908f.jsonl",
+  "agentId": "if-pr-too",
+  "sessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks-agent-worktree-0016--/2026-03-28T19-40-07-006Z_9a0e2b39-152c-4a83-b791-7a2e4f4e87b9.jsonl",
   "parentSessionId": "/Users/liamwest/.pi/agent/sessions/--Users-liamwest-src-github.com-JeffrayZhang-Stupid-hacks--/2026-03-28T17-30-44-011Z_ac676a31-38fc-46c8-9049-5c76a8296cc1.jsonl",
   "pid": 43133,
-  "branch": "side-agent/prs-still-generate",
-  "startedAt": "2026-03-28T19:25:01.792Z",
-  "tmuxWindowId": "@98",
+  "branch": "side-agent/if-pr-too",
+  "startedAt": "2026-03-28T19:40:05.495Z",
+  "tmuxWindowId": "@100",
   "tmuxWindowIndex": 4
 }

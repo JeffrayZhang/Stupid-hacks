@@ -12,6 +12,7 @@ import useAR from '../hooks/useAR';
 
 const MIN_SPACING = 1.0;
 const PLACE_INTERVAL = 1200;
+const INTERACT_DISTANCE = 1.5; // Max distance (meters) to tap a PR-mon
 
 // ── Build a 3D PR logo from Three.js primitives ──
 // Ported from Arya's ar-prototype/app.js buildPRLogoMesh
@@ -149,6 +150,8 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
   const [placedCount, setPlacedCount] = useState(0);
   const [error, setError] = useState(null);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [tooFarMsg, setTooFarMsg] = useState(null);
+  const tooFarTimerRef = useRef(null);
 
   const placedMapRef = useRef(new Map()); // id → { group, prmon }
   const placedGroupsRef = useRef([]);
@@ -279,7 +282,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       }
     }
 
-    // Animate: bob + rotate + pop-in
+    // Animate: bob + rotate + pop-in + distance-based opacity
     for (const { group } of placedMapRef.current.values()) {
       const age = now - group.userData.spawnTime;
 
@@ -298,6 +301,22 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
         group.userData.baseY = group.position.y;
       }
       group.position.y = group.userData.baseY + bob;
+
+      // Distance-based opacity: fade out PR-mons that are too far to interact with
+      const dist = Math.sqrt(
+        group.position.x * group.position.x +
+        group.position.z * group.position.z
+      );
+      const isClose = dist <= INTERACT_DISTANCE;
+      const targetOpacity = isClose ? 1.0 : Math.max(0.25, 1.0 - (dist - INTERACT_DISTANCE) * 0.15);
+
+      group.traverse((child) => {
+        if (child.material) {
+          child.material.transparent = true;
+          child.material.opacity = targetOpacity;
+          child.material.needsUpdate = true;
+        }
+      });
     }
 
     // ── Update radar minimap ──
@@ -423,9 +442,15 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
         }
       }
 
-      if (nearest && nearestDist < 1.5) {
+      if (nearest && nearestDist < INTERACT_DISTANCE) {
         endSession();
         onSelectPrmon(nearest);
+      } else if (nearest) {
+        // Show "too far" feedback
+        const distMeters = Math.round(nearestDist * 10) / 10;
+        setTooFarMsg(`Too far! Walk ${distMeters}m closer to ${nearest.name}`);
+        if (tooFarTimerRef.current) clearTimeout(tooFarTimerRef.current);
+        tooFarTimerRef.current = setTimeout(() => setTooFarMsg(null), 2500);
       }
     }
   }, [sceneRef, onSelectPrmon, endSession]);
@@ -514,9 +539,11 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
         </button>
 
         <div style={styles.statusBar}>
-          {placedCount === 0
-            ? '📡 Scanning for PR-mons…'
-            : `Found ${placedCount} PR-mon${placedCount > 1 ? 's' : ''}! Tap one to battle!`}
+          {tooFarMsg
+            ? `🚶 ${tooFarMsg}`
+            : placedCount === 0
+              ? '📡 Scanning for PR-mons…'
+              : `Found ${placedCount} PR-mon${placedCount > 1 ? 's' : ''}! Walk close & tap to battle!`}
         </div>
 
         {/* Minimap Radar */}

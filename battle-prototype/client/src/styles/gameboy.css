@@ -163,10 +163,22 @@ body {
   font-family: 'Press Start 2P', monospace;
 }
 
-.prmon-entry:hover,
-.prmon-entry:focus {
+.prmon-entry:hover:not(:disabled),
+.prmon-entry:focus:not(:disabled) {
   border-color: var(--gb-darkest);
   background: var(--gb-light);
+}
+
+.prmon-entry:disabled,
+.prmon-entry-far {
+  pointer-events: auto;
+  cursor: not-allowed !important;
+}
+
+.prmon-entry:disabled:hover,
+.prmon-entry-far:hover {
+  border-color: inherit;
+  background: inherit;
 }
 
 .prmon-entry .avatar {
