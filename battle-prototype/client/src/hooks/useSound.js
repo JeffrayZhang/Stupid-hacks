@@ -2,6 +2,9 @@ import { useRef, useCallback } from 'react';
 
 const SOUND_NAMES = ['battle', 'hit', 'catch', 'victory', 'defeat', 'select'];
 
+// Sounds that should loop when played
+const LOOPING_SOUNDS = ['battle'];
+
 export default function useSound() {
   const hasInteracted = useRef(false);
   const audioCache = useRef({});
@@ -31,6 +34,7 @@ export default function useSound() {
       const audio = audioCache.current[soundName];
       audio.currentTime = 0;
       audio.volume = 0.3;
+      audio.loop = LOOPING_SOUNDS.includes(soundName);
       audio.play().catch(() => {
         // Sound file missing or blocked — fail silently
       });
@@ -39,5 +43,13 @@ export default function useSound() {
     }
   }, []);
 
-  return { play };
+  const stop = useCallback((soundName) => {
+    const audio = audioCache.current[soundName];
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, []);
+
+  return { play, stop };
 }

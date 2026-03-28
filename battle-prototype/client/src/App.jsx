@@ -81,7 +81,7 @@ export default function App() {
   const [prevScreen, setPrevScreen] = useState(null);
   const [prmons, setPrmons] = useState([]);
   const [selectedPrmon, setSelectedPrmon] = useState(null);
-  const { play } = useSound();
+  const { play, stop } = useSound();
 
   const {
     battle,
@@ -144,6 +144,7 @@ export default function App() {
   }
 
   function handleRun() {
+    stop('battle');
     runAway();
     clearBattle();
     changeScreen('ar');
@@ -155,6 +156,7 @@ export default function App() {
   }
 
   function handleVictoryBack() {
+    stop('battle');
     play('victory');
     // Remove prmon from list only if it was caught (merged)
     if (selectedPrmon && battle?.status === 'caught') {
@@ -166,6 +168,7 @@ export default function App() {
   }
 
   function handleDefeatBack() {
+    stop('battle');
     play('defeat');
     clearBattle();
     setSelectedPrmon(null);
