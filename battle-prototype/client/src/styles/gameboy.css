@@ -705,3 +705,204 @@ body {
 /* Scrollbar for game screen */
 .game-screen::-webkit-scrollbar { display: none; }
 .game-screen { scrollbar-width: none; }
+
+/* ============================================
+   App Shell Polish — Screen Flow & 2016 Vibes
+   ============================================ */
+
+/* Pixel font applied globally through shell */
+.gameboy-shell,
+.gameboy-shell * {
+  font-family: 'Press Start 2P', monospace;
+}
+
+/* Screen fade transitions */
+.screen-fade-enter {
+  animation: screenFadeIn 0.3s ease-out forwards;
+}
+
+.screen-fade-exit {
+  animation: screenFadeOut 0.3s ease-in forwards;
+}
+
+@keyframes screenFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes screenFadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+
+/* Scanline CRT overlay */
+.scanlines {
+  position: relative;
+}
+
+.scanlines::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+}
+
+/* AR overlay styles */
+.ar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ar-overlay > * {
+  pointer-events: auto;
+}
+
+.ar-overlay .ar-back-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 6px 10px;
+  border: 2px solid var(--gb-darkest);
+  background: var(--gb-bg);
+  color: var(--gb-darkest);
+  cursor: pointer;
+}
+
+.ar-overlay .ar-scanning {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 6px;
+  color: var(--gb-darkest);
+  animation: blink 1.2s infinite;
+}
+
+/* Radar pulse animation */
+.radar-pulse-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px 0;
+  position: relative;
+}
+
+.radar-pulse {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: transparent;
+  border: 3px solid var(--gb-darkest);
+  position: relative;
+  animation: radarPing 2s ease-out infinite;
+}
+
+.radar-pulse::before,
+.radar-pulse::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid var(--gb-dark);
+  transform: translate(-50%, -50%);
+}
+
+.radar-pulse::before {
+  animation: radarPing 2s ease-out infinite 0.5s;
+}
+
+.radar-pulse::after {
+  animation: radarPing 2s ease-out infinite 1s;
+}
+
+@keyframes radarPing {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Title screen enhancements */
+.title-bounce {
+  animation: titleBounce 2s ease-in-out infinite;
+}
+
+@keyframes titleBounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+.title-screen .tagline {
+  font-size: 5px;
+  color: var(--gb-dark);
+  margin-top: 4px;
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+.title-emoji {
+  font-size: 48px;
+  margin: 10px 0;
+  display: inline-block;
+}
+
+.float-updown {
+  animation: floatUpDown 2s ease-in-out infinite;
+}
+
+@keyframes floatUpDown {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* 2016 green Game Boy tint filter */
+.gameboy-green {
+  filter: sepia(0.3) saturate(1.4) hue-rotate(60deg) brightness(0.95);
+}
+
+/* AR fallback styling */
+.ar-fallback {
+  position: relative;
+}
+
+.ar-fallback h2 {
+  animation: blink 2s infinite;
+}
