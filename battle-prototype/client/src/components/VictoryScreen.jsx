@@ -37,7 +37,7 @@ function Confetti() {
   );
 }
 
-export default function VictoryScreen({ battle, onCatch, onBack, loading }) {
+export default function VictoryScreen({ battle, onCatch, onBack, loading, error }) {
   const prmon = battle.prmon;
   const isCaught = battle.status === 'caught';
 
@@ -52,6 +52,11 @@ export default function VictoryScreen({ battle, onCatch, onBack, loading }) {
             {prmon.name} fainted!<br />
             PR #{prmon.prNumber} is ready to be caught!
           </div>
+          {error && (
+            <div className="error-text" style={{ color: '#f04038', margin: '8px 0', fontSize: '0.85em' }}>
+              {'⚠️'} {error}
+            </div>
+          )}
           <button
             className="merge-btn"
             onClick={onCatch}

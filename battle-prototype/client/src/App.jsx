@@ -86,6 +86,7 @@ export default function App() {
   const {
     battle,
     loading,
+    error,
     animating,
     lastHit,
     turnMessages,
@@ -155,8 +156,8 @@ export default function App() {
 
   function handleVictoryBack() {
     play('victory');
-    // Remove caught prmon from list
-    if (selectedPrmon) {
+    // Remove prmon from list only if it was caught (merged)
+    if (selectedPrmon && battle?.status === 'caught') {
       setPrmons(prev => prev.filter(p => p.id !== selectedPrmon.id));
     }
     clearBattle();
@@ -240,6 +241,7 @@ export default function App() {
                 onCatch={handleCatch}
                 onBack={handleVictoryBack}
                 loading={loading}
+                error={error}
               />
             )}
 
