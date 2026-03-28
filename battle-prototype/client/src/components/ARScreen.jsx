@@ -144,7 +144,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
   const radarCanvasRef = useRef(null);
-  const { isSupported, isActive, startSession, endSession, sceneRef, hitPoseRef } = useAR();
+  const { isSupported, isActive, startSession, endSession, sceneRef, hitPoseRef, cameraPoseRef } = useAR();
 
   const [placedCount, setPlacedCount] = useState(0);
   const [error, setError] = useState(null);
@@ -336,14 +336,10 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       ctx.moveTo(4, cy); ctx.lineTo(size - 4, cy);
       ctx.stroke();
 
-      // Get camera heading from the XR frame
-      let cameraY = 0;
-      let camX = 0, camZ = 0;
-      const renderer = sceneRef.current?.parent;
-      // Try to get viewer pose from the frame if available
-      // We'll use the placed groups' positions relative to origin
-      // The camera in Three.js XR is at the origin of the reference space
-      // We approximate: camera is at (0,0,0) in local space
+      // Get camera position and heading from the XR viewer pose
+      const camPose = cameraPoseRef.current;
+      let cameraY = camPose.heading;
+      let camX = camPose.x, camZ = camPose.z;
 
       // Draw PR-mon dots
       for (const { group, prmon } of placedMapRef.current.values()) {
@@ -402,7 +398,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
       ctx.stroke();
       ctx.restore();
     }
-  }, [prmons, sceneRef, hitPoseRef, buildPrmonGroup]);
+  }, [prmons, sceneRef, hitPoseRef, cameraPoseRef, buildPrmonGroup]);
 
   // ── Handle tap → find nearest PR-mon ──
   const onSelect = useCallback((hitPose) => {

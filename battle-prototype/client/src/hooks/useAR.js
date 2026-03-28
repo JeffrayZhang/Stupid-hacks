@@ -23,6 +23,7 @@ export default function useAR() {
   const refSpaceRef = useRef(null);
   const hitTestSourceRef = useRef(null);
   const hitPoseRef = useRef(null); // current hit-test pose (or null)
+  const cameraPoseRef = useRef({ x: 0, y: 0, z: 0, heading: 0 }); // viewer position + heading
 
   // Callbacks the consumer can hook into
   const onFrameRef = useRef(null);   // called every XR frame with (time, frame)
@@ -82,6 +83,21 @@ export default function useAR() {
 
     const refSpace = refSpaceRef.current;
     if (!refSpace) return;
+
+    // Extract viewer (camera) pose for minimap / UI consumers
+    const viewerPose = frame.getViewerPose(refSpace);
+    if (viewerPose) {
+      const vt = viewerPose.transform;
+      const pos = vt.position;
+      const q = vt.orientation;
+      // Heading = rotation around Y axis extracted from quaternion
+      // atan2(2*(qw*qy + qx*qz), 1 - 2*(qy*qy + qz*qz)) but for camera
+      // forward direction. We use the forward vector (-Z in camera space).
+      const fw_x = 2 * (q.x * q.z + q.w * q.y);
+      const fw_z = 1 - 2 * (q.x * q.x + q.y * q.y);
+      const heading = Math.atan2(fw_x, fw_z);
+      cameraPoseRef.current = { x: pos.x, y: pos.y, z: pos.z, heading };
+    }
 
     // Hit-test: find where center-screen ray hits a real surface
     if (hitTestSourceRef.current) {
@@ -215,5 +231,6 @@ export default function useAR() {
     endSession,
     sceneRef,
     hitPoseRef,
+    cameraPoseRef,
   };
 }
