@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    allowedHosts: ['syringeal-paris-flawed.ngrok-free.dev'],
     proxy: {
       '/api': 'http://localhost:3001',
     },
