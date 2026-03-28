@@ -200,14 +200,14 @@ function initWebXRScene() {
   xrRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   xrRenderer.setPixelRatio(window.devicePixelRatio);
   xrRenderer.setSize(window.innerWidth, window.innerHeight);
+  xrRenderer.setClearColor(0x000000, 0);   // fully transparent so camera passthrough shows
   xrRenderer.xr.enabled = true;
 
   gl = xrRenderer.getContext();
 
   xrScene = new THREE.Scene();
 
-  xrCamera = new THREE.PerspectiveCamera();
-  xrCamera.matrixAutoUpdate = false;   // WebXR provides the camera matrix
+  xrCamera = new THREE.PerspectiveCamera();  // Three.js XR manages this internally
 
   // Lighting
   const ambient = new THREE.AmbientLight(0xffffff, 0.6);
@@ -237,10 +237,14 @@ async function startXRSession() {
 
     xrSession.addEventListener('end', onXRSessionEnd);
 
-    // Set up WebGL layer
+    // Set up WebGL layer — must request alpha: true for camera passthrough
     await gl.makeXRCompatible();
-    const glLayer = new XRWebGLLayer(xrSession, gl);
+    const glLayer = new XRWebGLLayer(xrSession, gl, { alpha: true });
     xrSession.updateRenderState({ baseLayer: glLayer });
+
+    // Tell Three.js about the session
+    xrRenderer.xr.setReferenceSpaceType('local');
+    xrRenderer.xr.setSession(xrSession);
 
     // Reference spaces — try local-floor first, fall back to local
     try {
