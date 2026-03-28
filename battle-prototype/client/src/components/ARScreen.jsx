@@ -10,8 +10,8 @@ import useAR from '../hooks/useAR';
  * Tapping a creature selects it for battle.
  */
 
-const MIN_SPACING = 0.4;
-const PLACE_INTERVAL = 2500;
+const MIN_SPACING = 0.2;
+const PLACE_INTERVAL = 800;
 
 // ── Build a 3D PR logo from Three.js primitives ──
 // Ported from Arya's ar-prototype/app.js buildPRLogoMesh
@@ -108,7 +108,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
   const placedMapRef = useRef(new Map()); // id → { group, prmon }
   const placedGroupsRef = useRef([]);
   const nextPlaceIdx = useRef(0);
-  const lastPlaceTime = useRef(0);
+  const lastPlaceTime = useRef(performance.now());
 
   // ── Build a 3D group for a PR-mon using the PR logo ──
   const buildPrmonGroup = useCallback((prmon) => {
@@ -159,6 +159,9 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
     return group;
   }, []);
 
+  // ── Force-place first PR-mon right in front of camera after 1s ──
+  const forceSpawnedRef = useRef(false);
+
   // ── Auto-place PR-mons at hit-test positions ──
   const onFrame = useCallback((time) => {
     const scene = sceneRef.current;
@@ -166,6 +169,37 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
 
     const now = performance.now();
 
+    // Force-spawn first PR-mon 1m in front of camera after 1 second
+    if (
+      !forceSpawnedRef.current &&
+      nextPlaceIdx.current === 0 &&
+      prmons.length > 0 &&
+      now - (lastPlaceTime.current || now) > 1000
+    ) {
+      forceSpawnedRef.current = true;
+      // Place at 0, -0.3, -0.8 (slightly below eye level, less than 1m away)
+      const positions = [
+        new THREE.Vector3(0, -0.3, -0.8),
+        new THREE.Vector3(-0.4, -0.3, -1.2),
+        new THREE.Vector3(0.4, -0.3, -1.0),
+        new THREE.Vector3(0, -0.3, -1.5),
+      ];
+      for (let i = 0; i < Math.min(prmons.length, positions.length); i++) {
+        const prmon = prmons[i];
+        if (!placedMapRef.current.has(prmon.id)) {
+          const grp = buildPrmonGroup(prmon);
+          grp.position.copy(positions[i]);
+          scene.add(grp);
+          placedMapRef.current.set(prmon.id, { group: grp, prmon });
+          placedGroupsRef.current.push(grp);
+          nextPlaceIdx.current++;
+        }
+      }
+      lastPlaceTime.current = now;
+      setPlacedCount(placedMapRef.current.size);
+    }
+
+    // Also place additional ones on detected surfaces
     if (
       hitPoseRef.current &&
       nextPlaceIdx.current < prmons.length &&
@@ -243,7 +277,7 @@ export default function ARScreen({ prmons = [], onSelectPrmon, onBack }) {
         }
       }
 
-      if (nearest && nearestDist < 0.4) {
+      if (nearest && nearestDist < 0.8) {
         endSession();
         onSelectPrmon(nearest);
       }
