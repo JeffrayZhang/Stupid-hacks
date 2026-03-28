@@ -33,21 +33,6 @@
     <div id="marker-ui" class="toolbar">
       <button class="back-btn" onclick="backToLanding()">← Back</button>
       <span class="toolbar-title">Marker AR</span>
-      <div class="object-picker">
-        <button class="obj-btn active" data-shape="cube" title="Cube">🟦</button>
-        <button class="obj-btn" data-shape="sphere" title="Sphere">🔴</button>
-        <button class="obj-btn" data-shape="cylinder" title="Cylinder">🟢</button>
-        <button class="obj-btn" data-shape="torus" title="Torus">🟡</button>
-        <button class="obj-btn" data-shape="cone" title="Cone">🟣</button>
-      </div>
-      <div class="color-picker">
-        <button class="color-btn active" data-color="#4FC3F7" style="background:#4FC3F7"></button>
-        <button class="color-btn" data-color="#EF5350" style="background:#EF5350"></button>
-        <button class="color-btn" data-color="#66BB6A" style="background:#66BB6A"></button>
-        <button class="color-btn" data-color="#FFA726" style="background:#FFA726"></button>
-        <button class="color-btn" data-color="#AB47BC" style="background:#AB47BC"></button>
-        <button class="color-btn" data-color="#FFFFFF" style="background:#FFFFFF; border:1px solid #666"></button>
-      </div>
     </div>
     <div id="marker-scene-container"></div>
     <div id="marker-info" class="info-bar">
@@ -60,22 +45,7 @@
     <div id="markerless-ui" class="toolbar">
       <button class="back-btn" onclick="backToLanding()">← Back</button>
       <span class="toolbar-title">Markerless AR</span>
-      <div class="object-picker">
-        <button class="obj-btn active" data-shape="cube" title="Cube">🟦</button>
-        <button class="obj-btn" data-shape="sphere" title="Sphere">🔴</button>
-        <button class="obj-btn" data-shape="cylinder" title="Cylinder">🟢</button>
-        <button class="obj-btn" data-shape="torus" title="Torus">🟡</button>
-        <button class="obj-btn" data-shape="cone" title="Cone">🟣</button>
-      </div>
-      <div class="color-picker">
-        <button class="color-btn active" data-color="#4FC3F7" style="background:#4FC3F7"></button>
-        <button class="color-btn" data-color="#EF5350" style="background:#EF5350"></button>
-        <button class="color-btn" data-color="#66BB6A" style="background:#66BB6A"></button>
-        <button class="color-btn" data-color="#FFA726" style="background:#FFA726"></button>
-        <button class="color-btn" data-color="#AB47BC" style="background:#AB47BC"></button>
-        <button class="color-btn" data-color="#FFFFFF" style="background:#FFFFFF; border:1px solid #666"></button>
-      </div>
-      <button class="clear-btn" onclick="clearObjects()">🗑 Clear All</button>
+      <button class="clear-btn" onclick="clearObjects()">Clear All</button>
     </div>
     <canvas id="markerless-canvas"></canvas>
     <video id="webcam-video" autoplay playsinline style="display:none"></video>

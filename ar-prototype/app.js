@@ -5,32 +5,10 @@
                   (real world surface detection)
    ────────────────────────────────────────────── */
 
-// ── State ──
-let currentShape = 'cube';
-let currentColor = '#4FC3F7';
-
 // ── UI wiring ──
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-marker').addEventListener('click', startMarkerMode);
   document.getElementById('btn-markerless').addEventListener('click', startMarkerlessMode);
-
-  // Object & color pickers (delegate)
-  document.querySelectorAll('.obj-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.object-picker').querySelectorAll('.obj-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentShape = btn.dataset.shape;
-      updateMarkerEntity();
-    });
-  });
-  document.querySelectorAll('.color-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.color-picker').querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentColor = btn.dataset.color;
-      updateMarkerEntity();
-    });
-  });
 });
 
 function backToLanding() {
@@ -89,24 +67,97 @@ function buildMarkerScene() {
   setTimeout(updateMarkerEntity, 500);
 }
 
+/* ── Build a 3D PR logo from Three.js primitives ──
+   The git pull-request icon:
+   - Left branch: two dots connected by a vertical line
+   - Right branch: one dot at bottom, line going up, curving left with an arrow
+   Returns a THREE.Group scaled to fit within `size` units. */
+
+function buildPRLogoMesh(size, color) {
+  const c = new THREE.Color(color || '#4FC3F7');
+  const group = new THREE.Group();
+
+  // Scale factor: icon logical coords go from 0..1, we scale to `size`
+  const S = size || 0.12;
+
+  const lineMat = new THREE.MeshStandardMaterial({ color: c, metalness: 0.3, roughness: 0.5 });
+  const dotMat  = new THREE.MeshStandardMaterial({ color: c, metalness: 0.2, roughness: 0.4 });
+
+  const lineR = 0.045; // line radius
+  const dotR  = 0.12;  // dot radius
+
+  // ── Left branch (main) ──
+  // Top dot
+  const topDot = new THREE.Mesh(new THREE.SphereGeometry(dotR, 24, 24), dotMat);
+  topDot.position.set(-0.35, 0.55, 0);
+  group.add(topDot);
+
+  // Bottom dot
+  const botDot = new THREE.Mesh(new THREE.SphereGeometry(dotR, 24, 24), dotMat);
+  botDot.position.set(-0.35, -0.55, 0);
+  group.add(botDot);
+
+  // Vertical line connecting them
+  const leftLine = new THREE.Mesh(
+    new THREE.CylinderGeometry(lineR, lineR, 0.9, 16),
+    lineMat
+  );
+  leftLine.position.set(-0.35, 0, 0);
+  group.add(leftLine);
+
+  // ── Right branch (PR branch) ──
+  // Bottom dot
+  const rightDot = new THREE.Mesh(new THREE.SphereGeometry(dotR, 24, 24), dotMat);
+  rightDot.position.set(0.35, -0.55, 0);
+  group.add(rightDot);
+
+  // Vertical line going up on the right
+  const rightLine = new THREE.Mesh(
+    new THREE.CylinderGeometry(lineR, lineR, 0.55, 16),
+    lineMat
+  );
+  rightLine.position.set(0.35, -0.2, 0);
+  group.add(rightLine);
+
+  // Diagonal line from right-top toward left-top (the PR merge arrow)
+  const diagLen = 0.45;
+  const diagLine = new THREE.Mesh(
+    new THREE.CylinderGeometry(lineR, lineR, diagLen, 16),
+    lineMat
+  );
+  diagLine.position.set(0.15, 0.22, 0);
+  diagLine.rotation.z = Math.PI / 4; // 45 degree angle
+  group.add(diagLine);
+
+  // Arrow head (small cone)
+  const arrowHead = new THREE.Mesh(
+    new THREE.ConeGeometry(0.08, 0.16, 12),
+    lineMat
+  );
+  arrowHead.position.set(-0.02, 0.39, 0);
+  arrowHead.rotation.z = Math.PI / 4;
+  group.add(arrowHead);
+
+  // Scale the whole group
+  group.scale.setScalar(S / 0.8); // normalize so the icon fits in `size`
+
+  return group;
+}
+
 function updateMarkerEntity() {
   const el = document.getElementById('ar-object');
   if (!el) return;
 
-  while (el.firstChild) el.removeChild(el.firstChild);
+  // Remove any previous Three.js object
+  const oldObj = el.getObject3D('mesh');
+  if (oldObj) {
+    el.removeObject3D('mesh');
+  }
 
-  const geomMap = {
-    cube:     'primitive: box; width: 0.6; height: 0.6; depth: 0.6;',
-    sphere:   'primitive: sphere; radius: 0.4;',
-    cylinder: 'primitive: cylinder; radius: 0.3; height: 0.7;',
-    torus:    'primitive: torus; radius: 0.35; radiusTubular: 0.08;',
-    cone:     'primitive: cone; radiusBottom: 0.35; height: 0.7;',
-  };
-
-  el.setAttribute('geometry', geomMap[currentShape] || geomMap.cube);
-  el.setAttribute('material', `color: ${currentColor}; metalness: 0.3; roughness: 0.5;`);
+  // Build the PR logo as a Three.js group and inject it into A-Frame
+  const logo = buildPRLogoMesh(0.5, '#4FC3F7');
+  el.setObject3D('mesh', logo);
   el.setAttribute('position', '0 0.35 0');
-  el.setAttribute('rotation', '0 0 0');
   el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear;');
 }
 
@@ -319,33 +370,18 @@ function onXRSelect() {
 }
 
 function placeWebXRObject(x, y, z) {
-  let geo;
-  const s = 0.08;  // objects are ~8cm — real-world scale
-  switch (currentShape) {
-    case 'sphere':   geo = new THREE.SphereGeometry(s, 32, 32); break;
-    case 'cylinder': geo = new THREE.CylinderGeometry(s * 0.7, s * 0.7, s * 2, 32); break;
-    case 'torus':    geo = new THREE.TorusGeometry(s, s * 0.25, 16, 48); break;
-    case 'cone':     geo = new THREE.ConeGeometry(s, s * 2, 32); break;
-    default:         geo = new THREE.BoxGeometry(s * 1.5, s * 1.5, s * 1.5); break;
-  }
+  const logo = buildPRLogoMesh(0.08, '#4FC3F7');
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: currentColor,
-    metalness: 0.35,
-    roughness: 0.45,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-
-  // Position on the real surface — offset up by half height
-  const bbox = new THREE.Box3().setFromObject(mesh);
+  // Position on the real surface — offset up slightly
+  const bbox = new THREE.Box3().setFromObject(logo);
   const halfH = (bbox.max.y - bbox.min.y) / 2;
-  mesh.position.set(x, y + halfH, z);
+  logo.position.set(x, y + halfH, z);
 
-  mesh.userData.spawnTime = performance.now();
-  mesh.scale.set(0, 0, 0);
+  logo.userData.spawnTime = performance.now();
+  logo.scale.set(0, 0, 0);
 
-  xrScene.add(mesh);
-  xrPlacedObjects.push(mesh);
+  xrScene.add(logo);
+  xrPlacedObjects.push(logo);
 }
 
 function onXRSessionEnd() {
